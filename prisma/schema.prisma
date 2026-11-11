@@ -1,0 +1,266 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+}
+
+enum AccountGroup {
+  CUSTOMER
+  MAKER
+  BANK
+  CASH
+  EXPENSE
+  INVESTOR
+}
+
+enum GoldKind {
+  MOTAFARREQE
+  ABSHODE
+}
+
+enum GoldStatus {
+  IN_STOCK
+  OUT
+}
+
+enum AssayState {
+  NONE
+  PENDING
+  RESULTED
+}
+
+enum DocumentKind {
+  GOLD_IN
+  GOLD_OUT
+  GOLD_BUY
+  GOLD_SELL
+  ASSAY
+  MELT
+  COIN
+  CASH
+  OPENING
+  SEND_PIECES
+}
+
+enum Direction {
+  IN
+  OUT
+}
+
+enum RowKind {
+  GOLD
+  RIAL
+  COIN
+  ADJUSTMENT
+  NOTE
+}
+
+enum CoinOp {
+  BUY
+  SELL
+  RECEIVE
+  PAY
+}
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  name         String
+  passwordHash String
+  role         Role
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  documents    Document[] @relation("DocAuthor")
+  voids        Document[] @relation("DocVoider")
+  mazanes      Mazane[]
+  audits       AuditLog[]
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Account {
+  id         String       @id @default(cuid())
+  code       Int          @unique
+  name       String
+  family     String       @default("")
+  group      AccountGroup
+  phone      String       @default("")
+  mobile     String       @default("")
+  address    String       @default("")
+  nationalId String       @default("")
+  note       String       @default("")
+  active     Boolean      @default(true)
+  system     Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+  documents  Document[]
+  rows       DocumentRow[]
+  goldFrom   GoldItem[]   @relation("GoldSource")
+}
+
+model ShopSettings {
+  id               Int      @id @default(1)
+  shopName         String   @default("طلافروشی")
+  defaultAyar      Decimal  @default(740) @db.Decimal(7, 2)
+  standardAyar     Decimal  @default(750) @db.Decimal(7, 2)
+  mesghalGrams     Decimal  @default(4.6083) @db.Decimal(8, 4)
+  mesghalAyar      Decimal  @default(705) @db.Decimal(7, 2)
+  staleAbshodeDays Int      @default(7)
+  updatedAt        DateTime @updatedAt
+}
+
+model Mazane {
+  id            String   @id @default(cuid())
+  date          DateTime @db.Date
+  mazaneMesghal BigInt
+  mazaneGram    BigInt
+  enteredAs     String
+  note          String   @default("")
+  createdById   String
+  createdBy     User     @relation(fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@index([date])
+}
+
+model AssayLab {
+  id    String     @id @default(cuid())
+  name  String     @unique
+  items GoldItem[]
+}
+
+model CoinType {
+  id        String        @id @default(cuid())
+  code      String        @unique
+  name      String        @unique
+  buyPrice  BigInt        @default(0)
+  sellPrice BigInt        @default(0)
+  active    Boolean       @default(true)
+  sort      Int           @default(0)
+  rows      DocumentRow[]
+}
+
+model GoldItem {
+  id               String     @id @default(cuid())
+  code             Int        @unique
+  kind             GoldKind
+  conditional      Boolean    @default(false)
+  hidden           Boolean    @default(false)
+  status           GoldStatus @default(IN_STOCK)
+  assayState       AssayState @default(NONE)
+  originalScale    Decimal    @db.Decimal(14, 3)
+  original750      Decimal    @db.Decimal(14, 3)
+  remainingScale   Decimal    @db.Decimal(14, 3)
+  remaining750     Decimal    @db.Decimal(14, 3)
+  receiptAyar      Decimal    @db.Decimal(7, 2)
+  ayar             Decimal    @db.Decimal(7, 2)
+  assayAyar        Decimal?   @db.Decimal(7, 2)
+  assayKasr        Decimal?   @db.Decimal(14, 3)
+  ang              String     @default("")
+  envelopeNo       String     @default("")
+  note             String     @default("")
+  labId            String?
+  lab              AssayLab?  @relation(fields: [labId], references: [id])
+  sourceAccountId  String?
+  sourceAccount    Account?   @relation("GoldSource", fields: [sourceAccountId], references: [id])
+  originDocumentId String
+  originDocument   Document   @relation("OriginDoc", fields: [originDocumentId], references: [id])
+  receivedOn       DateTime   @db.Date
+  createdAt        DateTime   @default(now())
+  rows             DocumentRow[]
+
+  @@index([status, hidden])
+  @@index([assayState])
+}
+
+model Counter {
+  id    String @id
+  value Int
+}
+
+model Document {
+  id          String       @id @default(cuid())
+  number      Int          @unique
+  date        DateTime     @db.Date
+  kind        DocumentKind
+  accountId   String
+  account     Account      @relation(fields: [accountId], references: [id])
+  description String       @default("")
+  meta        Json?
+  createdById String
+  createdBy   User         @relation("DocAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now())
+  voidedAt    DateTime?
+  voidedById  String?
+  voidedBy    User?        @relation("DocVoider", fields: [voidedById], references: [id])
+  voidReason  String       @default("")
+  rows        DocumentRow[]
+  items       GoldItem[]   @relation("OriginDoc")
+
+  @@index([date])
+  @@index([accountId])
+  @@index([kind])
+}
+
+model DocumentRow {
+  id              String    @id @default(cuid())
+  documentId      String
+  document        Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  lineNo          Int
+  accountId       String
+  account         Account   @relation(fields: [accountId], references: [id])
+  direction       Direction
+  rowKind         RowKind
+  goldKind        GoldKind?
+  goldItemId      String?
+  goldItem        GoldItem? @relation(fields: [goldItemId], references: [id])
+  scaleWeight     Decimal?  @db.Decimal(14, 3)
+  ayar            Decimal?  @db.Decimal(7, 2)
+  weight750       Decimal?  @db.Decimal(14, 3)
+  amountRial      BigInt?
+  coinTypeId      String?
+  coinType        CoinType? @relation(fields: [coinTypeId], references: [id])
+  count           Int?
+  unitPrice       BigInt?
+  coinOp          CoinOp?
+  gramDelta       Decimal   @default(0) @db.Decimal(14, 3)
+  rialDelta       BigInt    @default(0)
+  coinDelta       Int       @default(0)
+  stockCountDelta Int       @default(0)
+  description     String    @default("")
+
+  @@index([accountId])
+  @@index([documentId])
+  @@index([goldItemId])
+  @@index([coinTypeId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String   @default("")
+  detail    String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

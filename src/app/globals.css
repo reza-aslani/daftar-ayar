@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-vazir), Tahoma, sans-serif;
+  --color-paper: #f3eee4;
+  --color-ink: #1c1915;
+  --color-muted: #6d6458;
+  --color-gold: #8d6a2e;
+  --color-gold-2: #e7d3a1;
+  --color-panel: #fffdf8;
+  --color-line: #e4d9c6;
+  --color-debit: #9d243c;
+  --color-credit: #0e6a4a;
+  --color-side: #16211e;
+  --color-stale: #6d28d9;
+  --color-pending: #b45309;
+}
+
+html {
+  direction: rtl;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 500px at 100% -10%, rgba(141, 106, 46, 0.08), transparent 50%),
+    linear-gradient(180deg, #f7f3ea 0%, #f3eee4 40%, #efe7d8 100%);
+  color: var(--color-ink);
+  font-family: var(--font-vazir), Tahoma, sans-serif;
+}
+
+button, input, select, textarea {
+  font: inherit;
+}
+
+.panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(48, 36, 16, 0.04);
+}
+
+.field {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--color-line);
+  background: white;
+  padding: 0.55rem 0.75rem;
+  outline: none;
+}
+
+.field:focus {
+  border-color: var(--color-gold);
+  box-shadow: 0 0 0 3px rgba(141, 106, 46, 0.15);
+}
+
+.ledger {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.ledger th {
+  text-align: right;
+  font-weight: 650;
+  color: var(--color-muted);
+  padding: 0.65rem 0.55rem;
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+}
+
+.ledger td {
+  padding: 0.62rem 0.55rem;
+  border-bottom: 1px solid #f0e7d8;
+  vertical-align: top;
+}
+
+.ledger tr.stale td {
+  background: #f5edff;
+}
+
+.ledger tr.pending td {
+  background: #fff6eb;
+}
+
+.num {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+}
+
+.debit { color: var(--color-debit); }
+.credit { color: var(--color-credit); }

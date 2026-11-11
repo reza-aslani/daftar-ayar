@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ayar
+      POSTGRES_PASSWORD: ayar
+      POSTGRES_DB: ayar
+    ports:
+      - "5432:5432"
+    volumes:
+      - ayar-pg:/var/lib/postgresql/data
+
+volumes:
+  ayar-pg:
