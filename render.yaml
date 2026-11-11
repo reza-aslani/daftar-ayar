@@ -1,0 +1,28 @@
+# Render Blueprint. Free web services cannot run preDeployCommand, so
+# migrations and the idempotent seed run in the start command.
+databases:
+  - name: daftar-ayar-db
+    plan: free
+    region: frankfurt
+    databaseName: daftar_ayar
+    user: daftar_ayar
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: daftar-ayar
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && npx tsx prisma/seed.ts && npm run start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: daftar-ayar-db
+          property: connectionString
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: NODE_ENV
+        value: production

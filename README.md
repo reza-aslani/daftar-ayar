@@ -123,7 +123,15 @@ npm run setup
 npm run dev
 ```
 
-Open http://127.0.0.1:43123. Calculation tests: `npm test`.
+Open http://127.0.0.1:43123. In production the server listens on `0.0.0.0` and `PORT` (43123 when `PORT` is unset). Calculation tests: `npm test`.
+
+## Render
+
+`render.yaml` defines a free Node web service and a free Postgres database in Frankfurt. `DATABASE_URL` comes from the database. `COOKIE_SECURE=1` and `NODE_ENV=production` are set on the service. Free instances cannot use a pre-deploy command, so each start runs `prisma migrate deploy` and `tsx prisma/seed.ts` before `npm run start`. The seed returns immediately when any user already exists. The build installs devDependencies even though `NODE_ENV` is production, because `next build` needs TypeScript.
+
+Build command: `npm install --include=dev && npx prisma generate && npm run build`
+
+Start command: `npx prisma migrate deploy && npx tsx prisma/seed.ts && npm run start`
 
 Demo logins: admin `reza` / `ayar750`, operator `sara` / `ayar740`. Admins manage users and settings and may void a document. Operators record documents, accounts, and the daily quote. Every document stores who recorded it.
 
