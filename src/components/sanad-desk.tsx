@@ -9,6 +9,7 @@ import type { DeskData } from "@/lib/dto";
 import { formatRial, formatWeight, parseAmount } from "@/lib/format";
 import { KIND_LABEL } from "@/lib/labels";
 import { cashAction, coinAction, goldInAction, goldOutAction, goldTradeAction, meltAction, sendPiecesAction, type ActionFail, type ActionOk } from "@/server/actions";
+import { emptySettle, moneyFromSettle, SettleBox, type SettleValue } from "@/components/settle-box";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 
@@ -74,46 +75,6 @@ function AccountSelect({
 function ErrorText({ error }: { error: string | null }) {
   if (!error) return null;
   return <p className="rounded-xl bg-[#fff1f2] px-3 py-2 text-sm text-[#9d243c]">{error}</p>;
-}
-
-function Settle({
-  settle,
-  setSettle,
-  bankId,
-  setBankId,
-  banks,
-}: {
-  settle: "account" | "cash" | "bank";
-  setSettle: (value: "account" | "cash" | "bank") => void;
-  bankId: string;
-  setBankId: (value: string) => void;
-  banks: DeskData["banks"];
-}) {
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      <div>
-        <Label>تسویه</Label>
-        <Select value={settle} onChange={(event) => setSettle(event.target.value as "account" | "cash" | "bank")}>
-          <option value="account">مانده در حساب</option>
-          <option value="cash">نقد از صندوق</option>
-          <option value="bank">بانک</option>
-        </Select>
-      </div>
-      {settle === "bank" ? (
-        <div>
-          <Label>بانک</Label>
-          <Select value={bankId} onChange={(event) => setBankId(event.target.value)}>
-            <option value="">انتخاب بانک</option>
-            {banks.map((bank) => (
-              <option key={bank.id} value={bank.id}>
-                {bank.title}
-              </option>
-            ))}
-          </Select>
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 export function SanadDesk({ data, tab }: { data: DeskData; tab: string }) {
@@ -304,8 +265,8 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
   const [mode, setMode] = useState<PriceMode>("mesghal");
   const [mazane, setMazane] = useState(data.mazane?.mesghal ?? "");
   const [total, setTotal] = useState("");
-  const [settle, setSettle] = useState<"account" | "cash" | "bank">("cash");
-  const [bankId, setBankId] = useState(data.banks[0]?.id ?? "");
+  const [date, setDate] = useState(data.today);
+  const [settle, setSettle] = useState<SettleValue>(() => emptySettle(data));
   const [ang, setAng] = useState("");
   const [note, setNote] = useState("");
   const piece = data.pieces.find((item) => item.id === itemId);
@@ -338,10 +299,20 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
         post.run(() =>
           goldTradeAction({
             side,
-            date: data.today,
+            date,
             accountId,
-            settle,
-            bankAccountId: bankId,
+            settle: "account",
+            money: moneyFromSettle(settle),
+            coinOffset: settle.coinOn ? { coinTypeId: settle.coinTypeId, count: settle.coinCount, unitPrice: settle.coinPrice } : null,
+            goldOffset: settle.goldOn
+              ? {
+                  scale: settle.goldScale,
+                  ayar: side === "SELL" ? settle.goldAyar : undefined,
+                  kind: side === "SELL" ? settle.goldKind : undefined,
+                  itemId: side === "BUY" ? settle.goldItemId : undefined,
+                  total: settle.goldTotal,
+                }
+              : null,
             mode,
             mazane: mode === "total" ? undefined : mazane,
             total: mode === "total" ? total : undefined,
@@ -360,9 +331,15 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
           ? "خرید پولی گرم را به حساب شخص نمی‌برد؛ یا به او بدهکار ریالی می‌شوید یا همان لحظه نقد می‌دهید. وزن ۷۵۰ = وزن × عیار / ۷۵۰."
           : "فروش از موجودی کم می‌کند و مبلغ را بدهکار شخص یا وصول نقد می‌کند. قیمت روی وزن ۷۵۰ همان قطعه است."}
       </p>
-      <div>
-        <Label>حساب</Label>
-        <AccountSelect accounts={data.accounts} value={accountId} onChange={setAccountId} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <div>
+          <Label>حساب</Label>
+          <AccountSelect accounts={data.accounts} value={accountId} onChange={setAccountId} />
+        </div>
+        <div>
+          <Label>تاریخ</Label>
+          <Input value={date} onChange={(event) => setDate(event.target.value)} />
+        </div>
       </div>
       {side === "BUY" ? (
         <div className="grid gap-3 md:grid-cols-3">
@@ -432,7 +409,14 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
           وزن ۷۵۰: {formatWeight(preview.weight750)} — مبلغ: {formatRial(preview.totalRial)} ریال ({formatRial(preview.totalRial / 10n)} تومان)
         </div>
       ) : null}
-      <Settle settle={settle} setSettle={setSettle} bankId={bankId} setBankId={setBankId} banks={data.banks} />
+      <SettleBox
+        total={preview?.totalRial ?? null}
+        data={data}
+        direction={side === "SELL" ? "receive" : "pay"}
+        instruments
+        value={settle}
+        onChange={setSettle}
+      />
       {side === "BUY" ? (
         <div>
           <Label>انگ</Label>
@@ -536,8 +520,8 @@ function CoinForm({ data }: { data: DeskData }) {
   const coin = data.coins.find((item) => item.id === coinTypeId);
   const [count, setCount] = useState("1");
   const [unitPrice, setUnitPrice] = useState(data.coins[0]?.buy ?? "");
-  const [settle, setSettle] = useState<"account" | "cash" | "bank">("cash");
-  const [bankId, setBankId] = useState(data.banks[0]?.id ?? "");
+  const [date, setDate] = useState(data.today);
+  const [settle, setSettle] = useState<SettleValue>(() => emptySettle(data));
   const [note, setNote] = useState("");
   const total = useMemo(() => {
     try {
@@ -553,7 +537,33 @@ function CoinForm({ data }: { data: DeskData }) {
       className="grid gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        post.run(() => coinAction({ date: data.today, accountId, coinTypeId, op, count, unitPrice, settle, bankAccountId: bankId, note }));
+        post.run(() =>
+          coinAction({
+            date,
+            accountId,
+            coinTypeId,
+            op,
+            count,
+            unitPrice,
+            settle: "account",
+            money: moneyFromSettle(settle),
+            coinOffset:
+              (op === "BUY" || op === "SELL") && settle.coinOn
+                ? { coinTypeId: settle.coinTypeId, count: settle.coinCount, unitPrice: settle.coinPrice }
+                : null,
+            goldOffset:
+              (op === "BUY" || op === "SELL") && settle.goldOn
+                ? {
+                    scale: settle.goldScale,
+                    ayar: op === "SELL" ? settle.goldAyar : undefined,
+                    kind: op === "SELL" ? settle.goldKind : undefined,
+                    itemId: op === "BUY" ? settle.goldItemId : undefined,
+                    total: settle.goldTotal,
+                  }
+                : null,
+            note,
+          }),
+        );
       }}
     >
       <p className="text-sm text-[#6d6458]">خرید و فروش حساب تعدادی شخص را عوض نمی‌کند. دریافت و پرداخت، سکه را امانی در حساب تعدادی می‌نشاند. فی در دریافت و پرداخت اجرت است و می‌تواند صفر باشد.</p>
@@ -569,7 +579,6 @@ function CoinForm({ data }: { data: DeskData }) {
               if (item === "SELL") setUnitPrice(coin.sell);
               else if (item === "BUY") setUnitPrice(coin.buy);
               else setUnitPrice("");
-              setSettle(item === "RECEIVE" || item === "PAY" ? "account" : "cash");
             }}
           >
             {item === "BUY" ? "خرید" : item === "SELL" ? "فروش" : item === "RECEIVE" ? "دریافت" : "پرداخت"}
@@ -608,7 +617,18 @@ function CoinForm({ data }: { data: DeskData }) {
         </div>
       </div>
       {total !== null ? <p className="text-sm">جمع: {formatRial(total)} ریال</p> : null}
-      <Settle settle={settle} setSettle={setSettle} bankId={bankId} setBankId={setBankId} banks={data.banks} />
+      <div>
+        <Label>تاریخ</Label>
+        <Input value={date} onChange={(event) => setDate(event.target.value)} />
+      </div>
+      <SettleBox
+        total={total}
+        data={data}
+        direction={op === "BUY" ? "pay" : "receive"}
+        instruments={op === "BUY" || op === "SELL"}
+        value={settle}
+        onChange={setSettle}
+      />
       <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="شرح" />
       <ErrorText error={post.error} />
       <Button disabled={post.pending}>{post.pending ? "در حال ثبت…" : "ثبت سند سکه"}</Button>
@@ -632,9 +652,10 @@ function CashForm({ data }: { data: DeskData }) {
         post.run(() => cashAction({ date: data.today, accountId, direction, amount, via, bankAccountId: bankId, note }));
       }}
     >
+      <p className="text-sm text-[#4d6278]">برای وجهِ چندبخشی و حوالهٔ صندوق به بانک، صفحهٔ صندوق را باز کنید.</p>
       <div className="flex gap-2">
-        <button type="button" className={`rounded-full px-3 py-1 text-sm ${direction === "IN" ? "bg-[#1d4e89] text-white" : "bg-white"}`} onClick={() => setDirection("IN")}>دریافت</button>
-        <button type="button" className={`rounded-full px-3 py-1 text-sm ${direction === "OUT" ? "bg-[#9d243c] text-white" : "bg-white"}`} onClick={() => setDirection("OUT")}>پرداخت</button>
+        <button type="button" className={`px-3 py-2 text-sm ${direction === "IN" ? "bg-[#1a56a8] text-white" : "border border-[#8eadd4] bg-white"}`} onClick={() => setDirection("IN")}>دریافت</button>
+        <button type="button" className={`px-3 py-2 text-sm ${direction === "OUT" ? "bg-[#a32020] text-white" : "border border-[#8eadd4] bg-white"}`} onClick={() => setDirection("OUT")}>پرداخت</button>
       </div>
       <div>
         <Label>حساب شخص</Label>

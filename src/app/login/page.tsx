@@ -10,10 +10,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const params = await searchParams;
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4">
-      <div className="panel p-6">
-        <div className="text-sm text-[#8d6a2e]">دفتر عیار</div>
-        <h1 className="mt-1 text-2xl">ورود به حساب طلا</h1>
-        <p className="mt-2 text-sm text-[#6d6458]">آبشده، متفرقه، شرطی، ذوب و سکه. هر سند با نام ثبت‌کننده می‌ماند.</p>
+      <div className="z-window">
+        <div className="z-cap">دفتر عیار</div>
+        <div className="p-5">
+        <h1 className="text-2xl">ورود</h1>
+        <p className="mt-2 text-sm text-[#4d6278]">حسابداری آبشده، سکه، صندوق و تراز.</p>
         <form action={loginAction} className="mt-6 space-y-3">
           <div>
             <Label htmlFor="username">نام کاربری</Label>
@@ -26,10 +27,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           {params.e ? <p className="text-sm text-[#9d243c]">نام کاربری یا رمز نادرست است.</p> : null}
           <Button className="w-full" type="submit">ورود</Button>
         </form>
-        <div className="mt-5 rounded-xl bg-[#faf6ee] p-3 text-sm leading-6 text-[#5c5346]">
+        <div className="mt-5 bg-[#e7f0fb] p-3 text-sm leading-6">
           نسخهٔ نمونه: مدیر <span className="num">reza / ayar750</span>
           <br />
           کاربر عملیات <span className="num">sara / ayar740</span>
+        </div>
         </div>
       </div>
     </main>

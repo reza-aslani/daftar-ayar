@@ -72,6 +72,7 @@ export async function getDeskData(): Promise<DeskData> {
     labs: labs.map((lab) => ({ id: lab.id, name: lab.name })),
     banks: options.filter((account) => account.group === "BANK"),
     expenseAccounts: options.filter((account) => account.group === "EXPENSE"),
+    moneyAccounts: options.filter((account) => account.group === "CASH" || account.group === "BANK"),
   };
 }
 
@@ -146,6 +147,9 @@ export async function accountBalances() {
     address: account.address,
     nationalId: account.nationalId,
     note: account.note,
+    branch: account.branch,
+    accountNo: account.accountNo,
+    iban: account.iban,
     active: account.active,
     system: account.system,
     group: account.group,
@@ -431,4 +435,94 @@ export async function getUsers() {
 
 export async function getAudit() {
   return prisma.auditLog.findMany({ include: { user: true }, orderBy: { createdAt: "desc" }, take: 200 });
+}
+
+export async function getCashDesk(day: Date) {
+  const [balances, coins, items] = await Promise.all([
+    accountBalances(),
+    getCoinReport(),
+    prisma.goldItem.findMany({
+      where: { hidden: false, status: "IN_STOCK" },
+      select: { kind: true, remaining750: true },
+    }),
+  ]);
+  let abshode = new Decimal(0);
+  let motafareqe = new Decimal(0);
+  for (const item of items) {
+    const weight = dec(item.remaining750);
+    if (item.kind === "ABSHODE") abshode = abshode.plus(weight);
+    else motafareqe = motafareqe.plus(weight);
+  }
+  const boxes = balances.filter((account) => account.group === "CASH" || account.group === "BANK");
+  const ids = boxes.map((box) => box.id);
+  const [before, dayRows] = await Promise.all([
+    ids.length
+      ? prisma.documentRow.groupBy({
+          by: ["accountId"],
+          where: { accountId: { in: ids }, document: { voidedAt: null, date: { lt: day } } },
+          _sum: { rialDelta: true },
+        })
+      : Promise.resolve([]),
+    ids.length
+      ? prisma.documentRow.findMany({
+          where: {
+            accountId: { in: ids },
+            rialDelta: { not: 0 },
+            document: { voidedAt: null, date: day },
+          },
+          include: { document: { include: { account: true, createdBy: true } } },
+          orderBy: [{ document: { number: "asc" } }, { lineNo: "asc" }],
+        })
+      : Promise.resolve([]),
+  ]);
+  const opening = new Map(before.map((row) => [row.accountId, row._sum.rialDelta ?? 0n]));
+  const books = boxes.map((box) => {
+    let run = opening.get(box.id) ?? 0n;
+    const open = run;
+    let inn = 0n;
+    let out = 0n;
+    const lines = dayRows
+      .filter((row) => row.accountId === box.id)
+      .map((row) => {
+        const delta = row.rialDelta;
+        if (delta > 0n) inn += delta;
+        if (delta < 0n) out += -delta;
+        run += delta;
+        return {
+          id: row.id,
+          documentId: row.documentId,
+          number: row.document.number,
+          kind: row.document.kind,
+          description: row.description,
+          party: row.document.accountId === box.id ? "" : accountTitle(row.document.account.name, row.document.account.family),
+          partyId: row.document.accountId === box.id ? "" : row.document.accountId,
+          delta: delta.toString(),
+          run: run.toString(),
+          direction: delta > 0n ? ("IN" as const) : ("OUT" as const),
+          user: row.document.createdBy.name,
+        };
+      });
+    return {
+      id: box.id,
+      code: box.code,
+      title: box.title,
+      group: box.group,
+      branch: box.branch,
+      accountNo: box.accountNo,
+      iban: box.iban,
+      opening: open.toString(),
+      incoming: inn.toString(),
+      outgoing: out.toString(),
+      closing: run.toString(),
+      lines,
+    };
+  });
+  return {
+    books,
+    coins,
+    abshode: abshode.toFixed(3),
+    motafareqe: motafareqe.toFixed(3),
+    physical: abshode.plus(motafareqe).toFixed(3),
+    persons: balances.filter((account) => personGroups.includes(account.group)),
+  };
 }

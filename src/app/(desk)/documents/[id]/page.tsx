@@ -38,7 +38,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
           </thead>
           <tbody>
             {doc.rows.map((row) => (
-              <tr key={row.id}>
+              <tr key={row.id} className={row.direction === "IN" ? "row-in" : "row-out"}>
                 <td>{row.lineNo.toLocaleString("fa-IR")}</td>
                 <td><Link href={`/accounts/${row.accountId}`}>{accountTitle(row.account.name, row.account.family)}</Link></td>
                 <td>

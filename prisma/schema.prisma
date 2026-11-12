@@ -48,6 +48,7 @@ enum DocumentKind {
   CASH
   OPENING
   SEND_PIECES
+  TRANSFER
 }
 
 enum Direction {
@@ -107,6 +108,9 @@ model Account {
   address    String       @default("")
   nationalId String       @default("")
   note       String       @default("")
+  branch     String       @default("")
+  accountNo  String       @default("")
+  iban       String       @default("")
   active     Boolean      @default(true)
   system     Boolean      @default(false)
   createdAt  DateTime     @default(now())

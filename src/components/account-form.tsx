@@ -24,6 +24,9 @@ export function AccountForm({
     address: string;
     nationalId: string;
     note: string;
+    branch: string;
+    accountNo: string;
+    iban: string;
     active: boolean;
     system: boolean;
   };
@@ -48,6 +51,9 @@ export function AccountForm({
           address: String(form.get("address") ?? ""),
           nationalId: String(form.get("nationalId") ?? ""),
           note: String(form.get("note") ?? ""),
+          branch: String(form.get("branch") ?? ""),
+          accountNo: String(form.get("accountNo") ?? ""),
+          iban: String(form.get("iban") ?? ""),
         };
         setError(null);
         start(async () => {
@@ -99,6 +105,22 @@ export function AccountForm({
         <Label>آدرس</Label>
         <Input name="address" defaultValue={initial?.address} />
       </div>
+      {group === "BANK" ? (
+        <>
+          <div>
+            <Label>شعبه</Label>
+            <Input name="branch" defaultValue={initial?.branch} />
+          </div>
+          <div>
+            <Label>شماره حساب</Label>
+            <Input name="accountNo" defaultValue={initial?.accountNo} />
+          </div>
+          <div className="md:col-span-2">
+            <Label>شبا</Label>
+            <Input name="iban" defaultValue={initial?.iban} />
+          </div>
+        </>
+      ) : null}
       <div className="md:col-span-2">
         <Label>یادداشت</Label>
         <Textarea name="note" defaultValue={initial?.note} />

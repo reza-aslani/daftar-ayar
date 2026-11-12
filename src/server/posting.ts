@@ -12,11 +12,14 @@ import {
   mesghalPriceFromGram,
   mesghalToGramFactor,
   mScale,
+  planMoneySettlement,
   priceGold,
   rialFromGram,
-  settlementLegs,
+  transferLegs,
   weight750,
   type CoinOp,
+  type MoneyLegDraft,
+  type PlannedMoneyLeg,
   type PriceMode,
 } from "@/lib/accounting";
 import { parseJalali } from "@/lib/date";
@@ -472,6 +475,266 @@ async function writeSettlement(
   return line;
 }
 
+type GoldOffsetInput = {
+  scale: number;
+  ayar?: number;
+  kind?: GoldKind;
+  itemId?: string;
+  total?: string;
+  ang?: string;
+};
+
+type CoinOffsetInput = {
+  coinTypeId: string;
+  count: number;
+  unitPrice: bigint;
+};
+
+type OffsetQuote = {
+  coinRial: bigint;
+  goldRial: bigint;
+  coin: null | {
+    coinTypeId: string;
+    name: string;
+    op: "BUY" | "SELL";
+    count: number;
+    unitPrice: bigint;
+    totalRial: bigint;
+    stockCountDelta: number;
+    tradePartyRial: bigint;
+  };
+  goldIn: null | {
+    kind: GoldKind;
+    scale: Decimal;
+    ayar: Decimal;
+    weight: Decimal;
+    totalRial: bigint;
+    ang: string;
+  };
+  goldOut: null | { itemId: string; scale: Decimal; totalRial: bigint };
+};
+
+function explicitMoney(
+  total: bigint,
+  input: { settle?: "account" | "cash" | "bank"; bankAccountId?: string; money?: MoneyLegDraft[] },
+): MoneyLegDraft[] {
+  if (input.money) return input.money.filter((leg) => leg.amount > 0n);
+  if (!input.settle || input.settle === "account" || total <= 0n) return [];
+  if (input.settle === "bank") {
+    if (!input.bankAccountId) throw new Error("بانک تسویه را انتخاب کنید");
+    return [{ via: "bank", amount: total, bankAccountId: input.bankAccountId }];
+  }
+  return [{ via: "cash", amount: total }];
+}
+
+async function quoteOffsets(
+  tx: Tx,
+  settings: { defaultAyar: Prisma.Decimal; standardAyar: Prisma.Decimal; mesghalGrams: Prisma.Decimal; mesghalAyar: Prisma.Decimal },
+  opts: { mesghalGrams: string; mesghalAyar: string; standardAyar: string },
+  incoming: boolean,
+  input: { coin?: CoinOffsetInput | null; gold?: GoldOffsetInput | null; avoidItemId?: string },
+): Promise<OffsetQuote> {
+  const quote: OffsetQuote = { coinRial: 0n, goldRial: 0n, coin: null, goldIn: null, goldOut: null };
+  if (input.coin && input.coin.count > 0) {
+    const op = incoming ? "BUY" : "SELL";
+    const eco = coinEconomics(op, input.coin.count, input.coin.unitPrice);
+    const coin = await tx.coinType.findUnique({ where: { id: input.coin.coinTypeId } });
+    if (!coin || !coin.active) throw new Error("نوع سکهٔ تسویه پیدا نشد");
+    const total = input.coin.unitPrice * BigInt(input.coin.count);
+    quote.coin = {
+      coinTypeId: coin.id,
+      name: coin.name,
+      op,
+      count: input.coin.count,
+      unitPrice: input.coin.unitPrice,
+      totalRial: total,
+      stockCountDelta: eco.stockCountDelta,
+      tradePartyRial: eco.tradePartyRial,
+    };
+    quote.coinRial = total;
+  }
+  if (input.gold && input.gold.scale > 0) {
+    if (incoming) {
+      const kind = input.gold.kind ?? "MOTAFARREQE";
+      const scale = new Decimal(input.gold.scale);
+      assertScale(scale);
+      const ayar = await resolveAyar({ conditional: false, ayar: input.gold.ayar, kind }, settings);
+      const mazane = input.gold.total === undefined ? await latestMazaneValue(tx, "mesghal") : undefined;
+      const priced = priceGold({
+        scale,
+        ayar,
+        mode: input.gold.total === undefined ? "mesghal" : "total",
+        mazane,
+        totalRial: input.gold.total,
+        ...opts,
+      });
+      quote.goldIn = { kind, scale, ayar, weight: priced.weight750, totalRial: priced.totalRial, ang: input.gold.ang ?? "" };
+      quote.goldRial = priced.totalRial;
+    } else {
+      if (!input.gold.itemId) throw new Error("قطعهٔ طلای تسویه را انتخاب کنید");
+      if (input.gold.itemId === input.avoidItemId) throw new Error("قطعهٔ معامله را نمی‌توان هم‌زمان برای تسویه خارج کرد");
+      await lockItem(tx, input.gold.itemId);
+      await recomputeGoldItem(tx, input.gold.itemId);
+      const item = await tx.goldItem.findUnique({ where: { id: input.gold.itemId } });
+      if (!item || item.hidden || item.status !== "IN_STOCK") throw new Error("قطعهٔ تسویه در موجودی نیست");
+      const preview = cutPiece({
+        remainingScale: item.remainingScale.toString(),
+        remaining750: item.remaining750.toString(),
+        cutScale: input.gold.scale,
+        ayar: item.ayar.toString(),
+      });
+      const mazane = input.gold.total === undefined ? await latestMazaneValue(tx, "mesghal") : undefined;
+      const priced = priceGold({
+        scale: preview.cut750,
+        ayar: settings.standardAyar.toString(),
+        mode: input.gold.total === undefined ? "mesghal" : "total",
+        mazane,
+        totalRial: input.gold.total,
+        ...opts,
+      });
+      quote.goldOut = { itemId: item.id, scale: preview.cutScale, totalRial: priced.totalRial };
+      quote.goldRial = priced.totalRial;
+    }
+  }
+  return quote;
+}
+
+function settlementSummary(total: bigint, covered: bigint, moneyLegs: PlannedMoneyLeg[], offsets: OffsetQuote): string {
+  const parts: string[] = [];
+  for (const leg of moneyLegs) parts.push(leg.via === "cash" ? `نقد ${formatRial(leg.amount)}` : `بانک ${formatRial(leg.amount)}`);
+  if (offsets.coin) {
+    parts.push(`${offsets.coin.op === "BUY" ? "سکه دریافتی" : "سکه پرداختی"} ${formatCount(offsets.coin.count)} ${offsets.coin.name}`);
+  }
+  if (offsets.goldIn) parts.push(`طلای دریافتی ${formatWeight(offsets.goldIn.weight)} گرم ۷۵۰`);
+  if (offsets.goldOut) parts.push("طلای پرداختی از موجودی");
+  const rest = total - covered;
+  parts.push(rest === 0n ? "تسویه کامل" : `مانده در حساب ${formatRial(rest)} ریال`);
+  return parts.join("، ") || "مانده در حساب";
+}
+
+async function applyPlannedMoney(
+  tx: Tx,
+  input: { docId: string; lineNo: number; partyId: string; legs: PlannedMoneyLeg[] },
+) {
+  let line = input.lineNo;
+  for (const leg of input.legs) {
+    const box = await boxAccount(tx, leg.via === "bank" ? "bank" : "cash", leg.bankAccountId);
+    const label = leg.via === "bank" ? `تسویه ${box.name} ${formatRial(leg.amount)} ریال` : `تسویه نقد صندوق ${formatRial(leg.amount)} ریال`;
+    line = await writeSettlement(tx, {
+      docId: input.docId,
+      lineNo: line,
+      partyId: input.partyId,
+      settlePartyRial: leg.partyRial,
+      box,
+      boxRial: leg.boxRial,
+      label,
+    });
+  }
+  return line;
+}
+
+async function writeOffsets(
+  tx: Tx,
+  input: { docId: string; lineNo: number; partyId: string; date: Date; offsets: OffsetQuote },
+): Promise<{ line: number; itemIds: string[] }> {
+  let line = input.lineNo;
+  const itemIds: string[] = [];
+  const coin = input.offsets.coin;
+  if (coin) {
+    await tx.$queryRaw`SELECT id FROM "CoinType" WHERE id = ${coin.coinTypeId} FOR UPDATE`;
+    const stockAgg = await tx.documentRow.aggregate({
+      where: { coinTypeId: coin.coinTypeId, document: { voidedAt: null } },
+      _sum: { stockCountDelta: true },
+    });
+    const stock = stockAgg._sum.stockCountDelta ?? 0;
+    if (stock + coin.stockCountDelta < 0) {
+      throw new Error(`موجودی ${coin.name} برای تسویه کافی نیست (موجودی ${formatCount(stock)})`);
+    }
+    const sentence = `${coin.op === "BUY" ? "دریافت سکه بابت تسویه" : "پرداخت سکه بابت تسویه"} ${formatCount(coin.count)} عدد ${coin.name}، ${formatRial(coin.totalRial)} ریال`;
+    await tx.documentRow.create({
+      data: {
+        documentId: input.docId,
+        lineNo: line,
+        accountId: input.partyId,
+        direction: coin.stockCountDelta > 0 ? "IN" : "OUT",
+        rowKind: "COIN",
+        coinTypeId: coin.coinTypeId,
+        count: coin.count,
+        unitPrice: coin.unitPrice,
+        coinOp: coin.op,
+        coinDelta: 0,
+        stockCountDelta: coin.stockCountDelta,
+        rialDelta: coin.tradePartyRial,
+        amountRial: coin.totalRial,
+        description: sentence,
+      },
+    });
+    if (coin.unitPrice > 0n) {
+      await tx.coinType.update({
+        where: { id: coin.coinTypeId },
+        data: coin.op === "BUY" ? { buyPrice: coin.unitPrice } : { sellPrice: coin.unitPrice },
+      });
+    }
+    line += 1;
+  }
+  const incoming = input.offsets.goldIn;
+  if (incoming) {
+    const item = await createPiece(tx, {
+      docId: input.docId,
+      kind: incoming.kind,
+      scale: incoming.scale,
+      ayar: incoming.ayar,
+      weight: incoming.weight,
+      conditional: false,
+      date: input.date,
+      sourceAccountId: input.partyId,
+      ang: incoming.ang,
+    });
+    const sentence = `${goldSentence({
+      verb: "دریافت در تسویه",
+      kind: incoming.kind,
+      scale: incoming.scale,
+      ayar: incoming.ayar,
+      weight750: incoming.weight,
+    })} به مبلغ ${formatRial(incoming.totalRial)} ریال`;
+    await tx.documentRow.create({
+      data: {
+        documentId: input.docId,
+        lineNo: line,
+        accountId: input.partyId,
+        direction: "IN",
+        rowKind: "GOLD",
+        goldKind: incoming.kind,
+        goldItemId: item.id,
+        scaleWeight: dec3(incoming.scale),
+        ayar: dec2(incoming.ayar),
+        weight750: dec3(incoming.weight),
+        gramDelta: "0.000",
+        rialDelta: -incoming.totalRial,
+        amountRial: incoming.totalRial,
+        description: sentence,
+      },
+    });
+    itemIds.push(item.id);
+    line += 1;
+  }
+  const outgoing = input.offsets.goldOut;
+  if (outgoing) {
+    await applyGoldOut(tx, {
+      docId: input.docId,
+      lineNo: line,
+      accountId: input.partyId,
+      itemId: outgoing.itemId,
+      scale: outgoing.scale,
+      affectGram: false,
+      rialDelta: outgoing.totalRial,
+      amountRial: outgoing.totalRial,
+    });
+    line += 1;
+  }
+  return { line, itemIds };
+}
+
 export async function postGoldTrade(
   userId: string,
   input: {
@@ -481,6 +744,9 @@ export async function postGoldTrade(
     note?: string;
     settle: "account" | "cash" | "bank";
     bankAccountId?: string;
+    money?: MoneyLegDraft[];
+    coinOffset?: CoinOffsetInput | null;
+    goldOffset?: GoldOffsetInput | null;
     mode: PriceMode;
     mazane?: number;
     total?: number;
@@ -503,8 +769,6 @@ export async function postGoldTrade(
       standardAyar: settings.standardAyar.toString(),
     };
     const mazane = await latestMazaneValue(tx, input.mode, input.mazane);
-    const box = input.settle === "account" ? null : await boxAccount(tx, input.settle === "bank" ? "bank" : "cash", input.bankAccountId);
-    const settleLabel = input.settle === "account" ? "مانده در حساب" : input.settle === "bank" ? `تسویه ${box?.name ?? "بانک"}` : "تسویه نقد";
 
     if (input.side === "BUY") {
       if (!input.kind || input.scale === undefined) throw new Error("نوع و وزن طلا را وارد کنید");
@@ -519,7 +783,18 @@ export async function postGoldTrade(
         totalRial: input.total,
         ...opts,
       });
-      const legs = settlementLegs(-priced.totalRial, -priced.totalRial, input.settle !== "account");
+      const offsets = await quoteOffsets(tx, settings, opts, false, {
+        coin: input.coinOffset,
+        gold: input.goldOffset,
+      });
+      const instrument = offsets.coinRial + offsets.goldRial;
+      if (instrument > priced.totalRial) throw new Error("تسویه با طلا و سکه از مبلغ سند بیشتر است");
+      const money = planMoneySettlement({
+        incoming: false,
+        room: priced.totalRial - instrument,
+        legs: explicitMoney(priced.totalRial, input),
+      });
+      const settleLabel = settlementSummary(priced.totalRial, money.settled + instrument, money.legs, offsets);
       const sentence = `${goldSentence({
         verb: "خرید",
         kind: input.kind,
@@ -562,22 +837,15 @@ export async function postGoldTrade(
           ayar: dec2(ayar),
           weight750: dec3(priced.weight750),
           gramDelta: "0.000",
-          rialDelta: legs.tradePartyRial,
+          rialDelta: -priced.totalRial,
           amountRial: priced.totalRial,
           description: sentence,
         },
       });
-      await writeSettlement(tx, {
-        docId: doc.id,
-        lineNo: 2,
-        partyId: account.id,
-        settlePartyRial: legs.settlePartyRial,
-        box,
-        boxRial: legs.boxRial,
-        label: settleLabel,
-      });
+      const written = await writeOffsets(tx, { docId: doc.id, lineNo: 2, partyId: account.id, date, offsets });
+      await applyPlannedMoney(tx, { docId: doc.id, lineNo: written.line, partyId: account.id, legs: money.legs });
       await audit(tx, userId, "POST_DOCUMENT", "Document", doc.id, sentence);
-      return { documentId: doc.id, number: doc.number, itemIds: [item.id] };
+      return { documentId: doc.id, number: doc.number, itemIds: [item.id, ...written.itemIds] };
     }
 
     if (!input.itemId) throw new Error("قطعهٔ فروشی را انتخاب کنید");
@@ -599,7 +867,19 @@ export async function postGoldTrade(
       totalRial: input.total,
       ...opts,
     });
-    const legs = settlementLegs(priced.totalRial, priced.totalRial, input.settle !== "account");
+    const offsets = await quoteOffsets(tx, settings, opts, true, {
+      coin: input.coinOffset,
+      gold: input.goldOffset,
+      avoidItemId: item.id,
+    });
+    const instrument = offsets.coinRial + offsets.goldRial;
+    if (instrument > priced.totalRial) throw new Error("تسویه با طلا و سکه از مبلغ سند بیشتر است");
+    const money = planMoneySettlement({
+      incoming: true,
+      room: priced.totalRial - instrument,
+      legs: explicitMoney(priced.totalRial, input),
+    });
+    const settleLabel = settlementSummary(priced.totalRial, money.settled + instrument, money.legs, offsets);
     const doc = await createDoc(tx, {
       date,
       kind: "GOLD_SELL",
@@ -614,22 +894,15 @@ export async function postGoldTrade(
       itemId: item.id,
       scale: preview.cutScale,
       affectGram: false,
-      rialDelta: legs.tradePartyRial,
+      rialDelta: priced.totalRial,
       amountRial: priced.totalRial,
     });
     const sentence = `${applied.sentence} — ${settleLabel}`;
     await tx.document.update({ where: { id: doc.id }, data: { description: joinText(sentence, input.note) } });
-    await writeSettlement(tx, {
-      docId: doc.id,
-      lineNo: 2,
-      partyId: account.id,
-      settlePartyRial: legs.settlePartyRial,
-      box,
-      boxRial: legs.boxRial,
-      label: settleLabel,
-    });
+    const written = await writeOffsets(tx, { docId: doc.id, lineNo: 2, partyId: account.id, date, offsets });
+    await applyPlannedMoney(tx, { docId: doc.id, lineNo: written.line, partyId: account.id, legs: money.legs });
     await audit(tx, userId, "POST_DOCUMENT", "Document", doc.id, sentence);
-    return { documentId: doc.id, number: doc.number, itemIds: [item.id] };
+    return { documentId: doc.id, number: doc.number, itemIds: [item.id, ...written.itemIds] };
   }, txOptions);
 }
 
@@ -772,26 +1045,47 @@ export async function postCoin(
     unitPrice: bigint;
     settle: "account" | "cash" | "bank";
     bankAccountId?: string;
+    money?: MoneyLegDraft[];
+    coinOffset?: CoinOffsetInput | null;
+    goldOffset?: GoldOffsetInput | null;
     note?: string;
   },
 ): Promise<PostResult> {
   const eco = coinEconomics(input.op, input.count, input.unitPrice);
-  const settled = input.settle !== "account" && input.unitPrice > 0n;
-  const legs = settlementLegs(eco.tradePartyRial, eco.boxRialIfSettled, settled);
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "CoinType" WHERE id = ${input.coinTypeId} FOR UPDATE`;
     const coin = await tx.coinType.findUnique({ where: { id: input.coinTypeId } });
     if (!coin || !coin.active) throw new Error("نوع سکه پیدا نشد");
+    const settings = await mustSettings(tx);
+    const opts = {
+      mesghalGrams: settings.mesghalGrams.toString(),
+      mesghalAyar: settings.mesghalAyar.toString(),
+      standardAyar: settings.standardAyar.toString(),
+    };
+    const abs = eco.tradePartyRial < 0n ? -eco.tradePartyRial : eco.tradePartyRial;
+    const incoming = eco.tradePartyRial > 0n;
+    const offsets = await quoteOffsets(tx, settings, opts, incoming, {
+      coin: input.coinOffset,
+      gold: input.goldOffset,
+    });
+    const instrument = offsets.coinRial + offsets.goldRial;
+    if (abs === 0n && instrument > 0n) throw new Error("این سند مبلغی برای تسویه با طلا و سکه ندارد");
+    if (instrument > abs) throw new Error("تسویه با طلا و سکه از مبلغ سند بیشتر است");
     const stockAgg = await tx.documentRow.aggregate({
       where: { coinTypeId: coin.id, document: { voidedAt: null } },
       _sum: { stockCountDelta: true },
     });
     const stock = stockAgg._sum.stockCountDelta ?? 0;
-    if (stock + eco.stockCountDelta < 0) throw new Error(`موجودی ${coin.name} کافی نیست (موجودی ${formatCount(stock)})`);
+    const sameCoin = offsets.coin && offsets.coin.coinTypeId === coin.id ? offsets.coin.stockCountDelta : 0;
+    if (stock + eco.stockCountDelta + sameCoin < 0) throw new Error(`موجودی ${coin.name} کافی نیست (موجودی ${formatCount(stock)})`);
+    const money = planMoneySettlement({
+      incoming,
+      room: abs - instrument,
+      legs: explicitMoney(abs, input),
+    });
     const account = await partyAccount(tx, input.accountId);
     const date = parseJalali(input.date);
-    const box = settled ? await boxAccount(tx, input.settle === "bank" ? "bank" : "cash", input.bankAccountId) : null;
-    const settleLabel = !settled ? "بدون تسویه نقد" : input.settle === "bank" ? `تسویه ${box?.name ?? "بانک"}` : "تسویه نقد";
+    const settleLabel = abs === 0n ? "بدون مبلغ" : settlementSummary(abs, money.settled + instrument, money.legs, offsets);
     const sentence = `${COIN_OP_LABEL[input.op]} ${formatCount(input.count)} عدد ${coin.name}${
       input.unitPrice > 0n ? ` فی ${formatRial(input.unitPrice)}، جمع ${formatRial(input.unitPrice * BigInt(input.count))}` : ""
     } — ${settleLabel}`;
@@ -815,20 +1109,13 @@ export async function postCoin(
         coinOp: input.op,
         coinDelta: eco.coinDelta,
         stockCountDelta: eco.stockCountDelta,
-        rialDelta: legs.tradePartyRial,
+        rialDelta: eco.tradePartyRial,
         amountRial: input.unitPrice * BigInt(input.count),
         description: sentence,
       },
     });
-    await writeSettlement(tx, {
-      docId: doc.id,
-      lineNo: 2,
-      partyId: account.id,
-      settlePartyRial: legs.settlePartyRial,
-      box,
-      boxRial: legs.boxRial,
-      label: settleLabel,
-    });
+    const written = await writeOffsets(tx, { docId: doc.id, lineNo: 2, partyId: account.id, date, offsets });
+    await applyPlannedMoney(tx, { docId: doc.id, lineNo: written.line, partyId: account.id, legs: money.legs });
     if (input.op === "BUY" && input.unitPrice > 0n) {
       await tx.coinType.update({ where: { id: coin.id }, data: { buyPrice: input.unitPrice } });
     }
@@ -836,7 +1123,7 @@ export async function postCoin(
       await tx.coinType.update({ where: { id: coin.id }, data: { sellPrice: input.unitPrice } });
     }
     await audit(tx, userId, "POST_DOCUMENT", "Document", doc.id, sentence);
-    return { documentId: doc.id, number: doc.number, itemIds: [] };
+    return { documentId: doc.id, number: doc.number, itemIds: written.itemIds };
   }, txOptions);
 }
 
@@ -887,6 +1174,147 @@ export async function postCash(
         direction: input.direction,
         rowKind: "RIAL",
         rialDelta: legs.boxRialDelta,
+        amountRial: input.amount,
+        description: sentence,
+      },
+    });
+    await audit(tx, userId, "POST_DOCUMENT", "Document", doc.id, sentence);
+    return { documentId: doc.id, number: doc.number, itemIds: [] };
+  }, txOptions);
+}
+
+function mergeLegs(legs: MoneyLegDraft[]): MoneyLegDraft[] {
+  const map = new Map<string, MoneyLegDraft>();
+  for (const leg of legs) {
+    if (leg.amount === 0n) continue;
+    if (leg.amount < 0n) throw new Error("مبلغ باید بزرگ‌تر از صفر باشد");
+    if (leg.via === "bank" && !leg.bankAccountId) throw new Error("بانک را انتخاب کنید");
+    const key = leg.via === "cash" ? "cash" : `bank:${leg.bankAccountId}`;
+    const prev = map.get(key);
+    if (prev) prev.amount += leg.amount;
+    else map.set(key, { via: leg.via, amount: leg.amount, bankAccountId: leg.bankAccountId });
+  }
+  return [...map.values()];
+}
+
+async function moneyAccount(tx: Tx, id: string) {
+  const account = await tx.account.findUnique({ where: { id } });
+  if (!account || !account.active || (account.group !== "CASH" && account.group !== "BANK")) {
+    throw new Error("حساب صندوق یا بانک معتبر نیست");
+  }
+  return account;
+}
+
+/** دریافت یا پرداخت چندوجهی: بخشی صندوق و بخشی یک یا چند بانک، در یک سند. */
+export async function postFunds(
+  userId: string,
+  input: {
+    date: string;
+    accountId: string;
+    direction: "IN" | "OUT";
+    note?: string;
+    legs: MoneyLegDraft[];
+  },
+): Promise<PostResult> {
+  const legs = mergeLegs(input.legs);
+  if (!legs.length) throw new Error("مبلغ دریافت یا پرداخت را وارد کنید");
+  return prisma.$transaction(async (tx) => {
+    const account = await partyAccount(tx, input.accountId);
+    const date = parseJalali(input.date);
+    const verb = input.direction === "IN" ? "دریافت" : "پرداخت";
+    const resolved: { boxName: string; boxId: string; amount: bigint; partyRial: bigint; boxRial: bigint }[] = [];
+    for (const leg of legs) {
+      const box = await boxAccount(tx, leg.via === "bank" ? "bank" : "cash", leg.bankAccountId);
+      const flow = cashLegs(input.direction, leg.amount);
+      resolved.push({
+        boxName: box.group === "CASH" ? "صندوق" : box.name,
+        boxId: box.id,
+        amount: leg.amount,
+        partyRial: flow.partyRialDelta,
+        boxRial: flow.boxRialDelta,
+      });
+    }
+    const sentence = `${verb} ${resolved.map((row) => `${formatRial(row.amount)} ریال ${row.boxName}`).join(" و ")}`;
+    const doc = await createDoc(tx, {
+      date,
+      kind: "CASH",
+      accountId: account.id,
+      userId,
+      description: joinText(sentence, input.note),
+    });
+    let line = 1;
+    for (const row of resolved) {
+      const text = `${verb} ${formatRial(row.amount)} ریال — ${row.boxName}`;
+      await tx.documentRow.create({
+        data: {
+          documentId: doc.id,
+          lineNo: line,
+          accountId: account.id,
+          direction: input.direction,
+          rowKind: "RIAL",
+          rialDelta: row.partyRial,
+          amountRial: row.amount,
+          description: text,
+        },
+      });
+      await tx.documentRow.create({
+        data: {
+          documentId: doc.id,
+          lineNo: line + 1,
+          accountId: row.boxId,
+          direction: input.direction,
+          rowKind: "RIAL",
+          rialDelta: row.boxRial,
+          amountRial: row.amount,
+          description: text,
+        },
+      });
+      line += 2;
+    }
+    await audit(tx, userId, "POST_DOCUMENT", "Document", doc.id, sentence);
+    return { documentId: doc.id, number: doc.number, itemIds: [] };
+  }, txOptions);
+}
+
+/** جابه‌جایی وجه بین صندوق و بانک‌ها. جمع موجودی وجوه عوض نمی‌شود. */
+export async function postTransfer(
+  userId: string,
+  input: { date: string; fromAccountId: string; toAccountId: string; amount: bigint; note?: string },
+): Promise<PostResult> {
+  const flow = transferLegs(input.amount);
+  if (input.fromAccountId === input.toAccountId) throw new Error("مبدأ و مقصد حواله یکی است");
+  return prisma.$transaction(async (tx) => {
+    const from = await moneyAccount(tx, input.fromAccountId);
+    const to = await moneyAccount(tx, input.toAccountId);
+    const date = parseJalali(input.date);
+    const sentence = `حواله ${formatRial(input.amount)} ریال از ${from.name} به ${to.name}`;
+    const doc = await createDoc(tx, {
+      date,
+      kind: "TRANSFER",
+      accountId: from.id,
+      userId,
+      description: joinText(sentence, input.note),
+    });
+    await tx.documentRow.create({
+      data: {
+        documentId: doc.id,
+        lineNo: 1,
+        accountId: from.id,
+        direction: "OUT",
+        rowKind: "RIAL",
+        rialDelta: flow.sourceRial,
+        amountRial: input.amount,
+        description: sentence,
+      },
+    });
+    await tx.documentRow.create({
+      data: {
+        documentId: doc.id,
+        lineNo: 2,
+        accountId: to.id,
+        direction: "IN",
+        rowKind: "RIAL",
+        rialDelta: flow.destRial,
         amountRial: input.amount,
         description: sentence,
       },
