@@ -56,7 +56,7 @@ npm test
 
 می‌شود به‌جای مثقال، مستقیم مظنهٔ گرم ۷۵۰ داد، یا مبلغ کل را دستی نوشت. مبلغ دستی بر محاسبهٔ مظنه مقدم است. مثال دفتر: مشتری ۱۵۹٬۰۰۰٬۰۰۰ ریال بدهکار است، ۷۰٫۵۳ گرم متفرقه را به ۱۱۹٬۰۰۰٬۰۰۰ ریال می‌خرد و ۴۰٬۰۰۰٬۰۰۰ ریال بدهکار می‌ماند. در دادهٔ نمونه بعد از آن ۲۰٬۰۰۰٬۰۰۰ ریال هم به بانک واریز شده و مانده ۲۰٬۰۰۰٬۰۰۰ ریال است.
 
-خرید و فروش پولی **حساب گرمی شخص را عوض نمی‌کند**. طلا به موجودی مغازه می‌آید یا از آن می‌رود و اثرش ریالی است: یا در حساب شخص می‌ماند یا همان سند با صندوق یا بانک تسویه می‌شود.
+خرید و فروش پولی **حساب گرمی شخص را عوض نمی‌کند**. طلا به موجودی مغازه می‌آید یا از آن می‌رود و اثرش ریالی است. تسویه مثل ردیف‌های دریافت و پرداخت زرین می‌تواند بخشی نقد صندوق، بخشی یک یا چند بانک، و بخشی با سکه یا طلا باشد؛ آنچه نماند در حساب شخص می‌ماند. حواله فقط صندوق و بانک را جابه‌جا می‌کند و جمع وجوه را عوض نمی‌کند.
 
 ورود و خروج گرمی (امانت / ته حساب) برعکس است: دریافت، شخص را بستانکار گرم می‌کند و موجودی را زیاد؛ خروج، شخص را بدهکار گرم می‌کند و موجودی را کم. عیار خروج دوباره پرسیده نمی‌شود. اگر وزن خروج از مانده کمتر باشد، بقیه در صندوق می‌ماند (قیچی).
 
@@ -90,6 +90,12 @@ npm test
 طلای ملکی = موجودی فیزیکی ۷۵۰ + طلب گرمی اشخاص − بدهی گرمی اشخاص − سرمایهٔ بستانکار گرم.
 
 خرید پولی این عدد را بالا می‌برد، چون گرم به حساب کسی نرفته. سپردن طلا به مشتری این عدد را عوض نمی‌کند. زیان ذوب از موجودی کم شده و در حساب سوخت جدا دیده می‌شود.
+
+## تراز و صندوق
+
+تراز دو ستون دارد: دارایی در برابر بدهی. ریال شامل وجه صندوق، بانک‌ها، طلب و بدهی اشخاص و سرمایه است. گرم، معادل ۷۵۰ آبشده و متفرقه و طلب و بدهی گرمی است. سکه برای هر نوع جدا نشان داده می‌شود: موجودی صندوق، بدهکار و بستانکار اشخاص، و ملکی. ارزش ریالی سکه با فی فروش فقط یادداشت است و داخل بالانس ریالی جمع نمی‌شود، چون در سند ننشسته.
+
+کارت حساب هر شخص صورتحساب ریال، گرم و سکه است با ستون بدهکار و بستانکار و ماندهٔ جاری. گزارش صندوق، ماندهٔ اول روز، ورود آبی، خروج قرمز و ماندهٔ پایان را برای صندوق و هر بانک جدا می‌نویسد.
 
 ## فرض‌هایی که دفتر در آن‌ها صریح نبود
 
@@ -141,7 +147,7 @@ A positive balance is a debit: the party owes the shop. A negative balance is a 
 
 750-equivalent weight is `round(scale × ayar / 750, 3 decimals)`, half up. The book standard is 750. Scrap defaults to ayar 740, configurable by an admin. Melted bars default to 750 when ayar is omitted. Conditional metal is booked at a provisional 750 until the assay result.
 
-The mesghal quote is the price of one 4.6083 g unit at ayar 705. One gram of 750 gold costs that quote divided by `4.6083 × 705 / 750` (4.331802). A typed total overrides the quote. Buying or selling for money does not move the party's gram balance; a plain receipt or issue does. A partial issue leaves the remainder in stock.
+The mesghal quote is the price of one 4.6083 g unit at ayar 705. One gram of 750 gold costs that quote divided by `4.6083 × 705 / 750` (4.331802). A typed total overrides the quote. Buying or selling for money does not move the party's gram balance; a plain receipt or issue does. A trade can be settled partly in cash, partly through one or more banks, and partly in gold or coins; the remainder stays on the person's account. A transfer only moves money between the cash box and the banks. A partial issue leaves the remainder in stock.
 
 Assay replaces the provisional 750. An optional melting deduction is spread across the stock remainder and any pieces already issued, in proportion to scale. If the original receipt hit a gram account, that account takes the balancing difference. A monetary purchase does not push a gram adjustment back to the seller.
 

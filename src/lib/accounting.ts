@@ -180,6 +180,64 @@ export function settlementLegs(
   return { tradePartyRial, settlePartyRial: -tradePartyRial, boxRial: boxRialIfSettled };
 }
 
+export type MoneyLegDraft = {
+  via: "cash" | "bank";
+  amount: bigint;
+  bankAccountId?: string;
+};
+
+export type PlannedMoneyLeg = MoneyLegDraft & {
+  partyRial: bigint;
+  boxRial: bigint;
+};
+
+/**
+ * تسویهٔ ریالی چندطرفه‌ای مثل ردیف‌های pd زرین.
+ * incoming یعنی وجه وارد صندوق یا بانک می‌شود و شخص بستانکار می‌گردد (فروش، یا خریدِ پرداخت‌شده از سوی ما نیست).
+ * room سقف باقی‌ماندهٔ مبلغ سند است؛ جمع وجه‌ها نباید از آن بگذرد. مانده در حساب همان room منهای جمع وجه‌هاست.
+ */
+export function planMoneySettlement(input: {
+  incoming: boolean;
+  room: bigint;
+  legs: MoneyLegDraft[];
+}): { legs: PlannedMoneyLeg[]; settled: bigint } {
+  if (input.room < 0n) throw new Error("سقف تسویه نامعتبر است");
+  const merged = new Map<string, MoneyLegDraft>();
+  for (const leg of input.legs) {
+    if (leg.amount === 0n) continue;
+    if (leg.amount < 0n) throw new Error("مبلغ تسویه باید بزرگ‌تر از صفر باشد");
+    if (leg.via === "bank" && !leg.bankAccountId) throw new Error("بانک تسویه را انتخاب کنید");
+    const key = leg.via === "cash" ? "cash" : `bank:${leg.bankAccountId}`;
+    const prev = merged.get(key);
+    if (prev) prev.amount += leg.amount;
+    else merged.set(key, { via: leg.via, amount: leg.amount, bankAccountId: leg.bankAccountId });
+  }
+  let settled = 0n;
+  const legs: PlannedMoneyLeg[] = [];
+  for (const leg of merged.values()) {
+    settled += leg.amount;
+    if (settled > input.room) throw new Error("جمع تسویه از مبلغ سند بیشتر است");
+    legs.push({
+      ...leg,
+      partyRial: input.incoming ? -leg.amount : leg.amount,
+      boxRial: input.incoming ? leg.amount : -leg.amount,
+    });
+  }
+  return { legs, settled };
+}
+
+/** ماندهٔ شخص بعد از اثر معامله و تسویه‌ها. علامت مثبت هنوز بدهکار است. */
+export function partyRemainder(tradePartyRial: bigint, settledAbs: bigint): bigint {
+  if (tradePartyRial >= 0n) return tradePartyRial - settledAbs;
+  return tradePartyRial + settledAbs;
+}
+
+/** حواله بین صندوق و بانک: مبدأ کم می‌شود و مقصد زیاد. جمع اثر روی وجوه صفر است. */
+export function transferLegs(amount: bigint): { sourceRial: bigint; destRial: bigint } {
+  if (amount <= 0n) throw new Error("مبلغ حواله باید بزرگ‌تر از صفر باشد");
+  return { sourceRial: -amount, destRial: amount };
+}
+
 export function cashLegs(direction: "IN" | "OUT", amount: bigint): {
   partyRialDelta: bigint;
   boxRialDelta: bigint;

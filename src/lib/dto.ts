@@ -44,6 +44,7 @@ export type DeskData = {
   labs: { id: string; name: string }[];
   banks: AccountOption[];
   expenseAccounts: AccountOption[];
+  moneyAccounts: AccountOption[];
 };
 
 export type AssayOut = {

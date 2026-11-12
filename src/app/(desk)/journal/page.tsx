@@ -3,7 +3,7 @@ import { formatJalaliFa } from "@/lib/date";
 import { DOC_LABEL, accountTitle } from "@/lib/labels";
 import { getJournal } from "@/server/queries";
 
-const kinds = ["ALL", "GOLD_IN", "GOLD_OUT", "GOLD_BUY", "GOLD_SELL", "ASSAY", "MELT", "COIN", "CASH", "OPENING", "SEND_PIECES"] as const;
+const kinds = ["ALL", "GOLD_IN", "GOLD_OUT", "GOLD_BUY", "GOLD_SELL", "ASSAY", "MELT", "COIN", "CASH", "TRANSFER", "OPENING", "SEND_PIECES"] as const;
 
 export default async function JournalPage({ searchParams }: { searchParams: Promise<{ kind?: string }> }) {
   const kind = (await searchParams).kind ?? "ALL";

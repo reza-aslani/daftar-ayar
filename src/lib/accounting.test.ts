@@ -9,7 +9,10 @@ import {
   meltingLoss,
   mesghalToGramFactor,
   priceGold,
+  partyRemainder,
+  planMoneySettlement,
   settlementLegs,
+  transferLegs,
   weight750,
 } from "@/lib/accounting";
 import { addDaysUtc, formatJalali, parseJalali } from "@/lib/date";
@@ -87,6 +90,56 @@ describe("جهت حساب", () => {
     expect(eco.stockCountDelta).toBe(2);
     expect(eco.coinDelta).toBe(-2);
     expect(eco.tradePartyRial).toBe(0n);
+  });
+});
+
+describe("تسویه چندطرفه و حواله", () => {
+  it("فروش را بخشی نقد و بخشی بانک تسویه می‌کند و مانده را بدهکار نگه می‌دارد", () => {
+    const trade = 100_000_000n;
+    const plan = planMoneySettlement({
+      incoming: true,
+      room: trade,
+      legs: [
+        { via: "cash", amount: 40_000_000n },
+        { via: "bank", amount: 35_000_000n, bankAccountId: "mellat" },
+      ],
+    });
+    expect(plan.settled).toBe(75_000_000n);
+    expect(plan.legs[0].boxRial).toBe(40_000_000n);
+    expect(plan.legs[0].partyRial).toBe(-40_000_000n);
+    expect(plan.legs[1].boxRial).toBe(35_000_000n);
+    expect(partyRemainder(trade, plan.settled)).toBe(25_000_000n);
+  });
+
+  it("خرید را با خروج وجه تسویه می‌کند و صندوق را بستانکار می‌کند", () => {
+    const trade = -80_000_000n;
+    const plan = planMoneySettlement({
+      incoming: false,
+      room: 80_000_000n,
+      legs: [{ via: "cash", amount: 80_000_000n }],
+    });
+    expect(plan.legs[0].boxRial).toBe(-80_000_000n);
+    expect(plan.legs[0].partyRial).toBe(80_000_000n);
+    expect(partyRemainder(trade, plan.settled)).toBe(0n);
+  });
+
+  it("جمع تسویهٔ بیشتر از مبلغ سند را رد می‌کند", () => {
+    expect(() =>
+      planMoneySettlement({
+        incoming: true,
+        room: 10_000_000n,
+        legs: [
+          { via: "cash", amount: 6_000_000n },
+          { via: "bank", amount: 5_000_000n, bankAccountId: "b" },
+        ],
+      }),
+    ).toThrow(/بیشتر/);
+  });
+
+  it("حواله از صندوق به بانک جمع وجوه را عوض نمی‌کند", () => {
+    const legs = transferLegs(20_000_000n);
+    expect(legs.sourceRial + legs.destRial).toBe(0n);
+    expect(legs.destRial).toBe(20_000_000n);
   });
 });
 

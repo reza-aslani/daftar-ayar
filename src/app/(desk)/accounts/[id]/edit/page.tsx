@@ -20,6 +20,9 @@ export default async function EditAccountPage({ params }: { params: Promise<{ id
           address: account.address,
           nationalId: account.nationalId,
           note: account.note,
+          branch: account.branch,
+          accountNo: account.accountNo,
+          iban: account.iban,
           active: account.active,
           system: account.system,
         }}

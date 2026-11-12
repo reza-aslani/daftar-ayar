@@ -24,9 +24,10 @@ export const DOC_LABEL: Record<DocumentKind, string> = {
   ASSAY: "جواب ری",
   MELT: "ذوب",
   COIN: "سکه",
-  CASH: "وجه نقد",
+  CASH: "دریافت و پرداخت",
   OPENING: "افتتاحیه",
   SEND_PIECES: "ارسال تکه",
+  TRANSFER: "حواله صندوق و بانک",
 };
 
 export const COIN_OP_LABEL = {

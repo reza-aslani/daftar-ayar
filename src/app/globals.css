@@ -2,16 +2,16 @@
 
 @theme {
   --font-sans: var(--font-vazir), Tahoma, sans-serif;
-  --color-paper: #f3eee4;
-  --color-ink: #1c1915;
-  --color-muted: #6d6458;
-  --color-gold: #8d6a2e;
-  --color-gold-2: #e7d3a1;
-  --color-panel: #fffdf8;
-  --color-line: #e4d9c6;
-  --color-debit: #9d243c;
-  --color-credit: #0e6a4a;
-  --color-side: #16211e;
+  --color-paper: #d5e4f5;
+  --color-ink: #1b2838;
+  --color-muted: #4d6278;
+  --color-gold: #c6a15b;
+  --color-gold-2: #ffe08a;
+  --color-panel: #ffffff;
+  --color-line: #b9d0ea;
+  --color-debit: #b42318;
+  --color-credit: #0b4ea2;
+  --color-side: #0e3f86;
   --color-stale: #6d28d9;
   --color-pending: #b45309;
 }
@@ -22,10 +22,8 @@ html {
 
 body {
   min-height: 100vh;
-  background:
-    radial-gradient(1200px 500px at 100% -10%, rgba(141, 106, 46, 0.08), transparent 50%),
-    linear-gradient(180deg, #f7f3ea 0%, #f3eee4 40%, #efe7d8 100%);
-  color: var(--color-ink);
+  background: #d5e4f5;
+  color: #1b2838;
   font-family: var(--font-vazir), Tahoma, sans-serif;
 }
 
@@ -33,25 +31,42 @@ button, input, select, textarea {
   font: inherit;
 }
 
-.panel {
-  background: var(--color-panel);
-  border: 1px solid var(--color-line);
-  border-radius: 18px;
-  box-shadow: 0 10px 30px rgba(48, 36, 16, 0.04);
+.panel,
+.z-window {
+  background: #fff;
+  border: 1px solid #8eadd4;
+  border-radius: 2px;
+  box-shadow: 0 1px 0 rgba(14, 63, 134, 0.06);
+}
+
+.z-cap {
+  background: linear-gradient(#2d74cc, #1a56a8);
+  color: #fff;
+  padding: 0.45rem 0.75rem;
+  font-weight: 650;
+}
+
+.z-cap.pay {
+  background: linear-gradient(#d45353, #a32020);
+}
+
+.z-cap.gold {
+  background: linear-gradient(#3d6e4f, #1f4d34);
 }
 
 .field {
   width: 100%;
-  border-radius: 12px;
-  border: 1px solid var(--color-line);
-  background: white;
-  padding: 0.55rem 0.75rem;
+  border-radius: 2px;
+  border: 1px solid #7ea4d4;
+  background: #fff;
+  min-height: 42px;
+  padding: 0.45rem 0.6rem;
   outline: none;
 }
 
 .field:focus {
-  border-color: var(--color-gold);
-  box-shadow: 0 0 0 3px rgba(141, 106, 46, 0.15);
+  border-color: #1a56a8;
+  box-shadow: 0 0 0 2px rgba(26, 86, 168, 0.2);
 }
 
 .ledger {
@@ -63,24 +78,43 @@ button, input, select, textarea {
 .ledger th {
   text-align: right;
   font-weight: 650;
-  color: var(--color-muted);
-  padding: 0.65rem 0.55rem;
-  border-bottom: 1px solid var(--color-line);
+  color: #fff;
+  background: #1e5aa6;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid #17498a;
   white-space: nowrap;
 }
 
 .ledger td {
-  padding: 0.62rem 0.55rem;
-  border-bottom: 1px solid #f0e7d8;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid #d3e2f4;
   vertical-align: top;
+  background: #fff;
+}
+
+.ledger tbody tr:nth-child(even) td {
+  background: #f3f8fd;
 }
 
 .ledger tr.stale td {
-  background: #f5edff;
+  background: #f3e8ff;
 }
 
 .ledger tr.pending td {
   background: #fff6eb;
+}
+
+.ledger tr.row-in td {
+  color: #0b4ea2;
+}
+
+.ledger tr.row-out td {
+  color: #a32020;
+}
+
+.ledger tr.total td {
+  background: #e7f0fb;
+  font-weight: 700;
 }
 
 .num {
@@ -90,5 +124,65 @@ button, input, select, textarea {
   display: inline-block;
 }
 
-.debit { color: var(--color-debit); }
-.credit { color: var(--color-credit); }
+.debit { color: #b42318; font-weight: 650; }
+.credit { color: #0b4ea2; font-weight: 650; }
+
+.z-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 64px;
+  background: #fff;
+  border: 1px solid #8eadd4;
+  padding: 0.55rem 0.7rem;
+}
+
+.z-tile:active {
+  background: #fff4c2;
+}
+
+.z-num {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  place-items: center;
+  background: #1e5aa6;
+  color: #fff;
+  font-weight: 700;
+}
+
+.dock {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  background: #0e3f86;
+  border-top: 3px solid #c6a15b;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.dock a {
+  flex: 1;
+  padding: 0.45rem 0.1rem 0.55rem;
+  text-align: center;
+  font-size: 0.72rem;
+  color: #d6e6ff;
+}
+
+.dock a.on {
+  color: #ffe08a;
+  font-weight: 700;
+}
+
+@media (min-width: 768px) {
+  .dock { display: none; }
+}
+
+@media print {
+  .no-print, .dock, aside { display: none !important; }
+  body { background: #fff; }
+  .desk { padding: 0 !important; }
+  .panel, .z-window { box-shadow: none; }
+}

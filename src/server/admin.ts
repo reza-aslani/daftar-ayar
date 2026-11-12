@@ -25,6 +25,9 @@ export async function createAccount(
     address?: string;
     nationalId?: string;
     note?: string;
+    branch?: string;
+    accountNo?: string;
+    iban?: string;
   },
 ) {
   const name = input.name.trim();
@@ -42,6 +45,9 @@ export async function createAccount(
       address: input.address?.trim() ?? "",
       nationalId: input.nationalId?.trim() ?? "",
       note: input.note?.trim() ?? "",
+      branch: input.branch?.trim() ?? "",
+      accountNo: input.accountNo?.trim() ?? "",
+      iban: input.iban?.trim().toUpperCase() ?? "",
     },
   });
   await prisma.auditLog.create({
@@ -61,6 +67,9 @@ export async function updateAccount(
     address?: string;
     nationalId?: string;
     note?: string;
+    branch?: string;
+    accountNo?: string;
+    iban?: string;
     active: boolean;
   },
 ) {
@@ -79,6 +88,9 @@ export async function updateAccount(
       address: input.address?.trim() ?? "",
       nationalId: input.nationalId?.trim() ?? "",
       note: input.note?.trim() ?? "",
+      branch: input.branch?.trim() ?? "",
+      accountNo: input.accountNo?.trim() ?? "",
+      iban: input.iban?.trim().toUpperCase() ?? "",
       active: input.active,
     },
   });
