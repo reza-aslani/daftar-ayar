@@ -2,16 +2,21 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import Decimal from "decimal.js";
 import { priceGold, type PriceMode } from "@/lib/accounting";
-import type { DeskData } from "@/lib/dto";
+import { EntryForm, SaveButton, toastSaved } from "@/components/entry/form";
+import { useFormMemory } from "@/components/entry/memory";
+import { NewPersonDialog } from "@/components/entry/new-person";
+import { NumberField } from "@/components/entry/number-field";
+import { PersonPicker } from "@/components/entry/person-picker";
+import { useInsertedPerson } from "@/components/entry/use-inserted";
+import { clearSettleAmounts, emptySettle, moneyFromSettle, SettleBox, type SettleValue } from "@/components/settle-box";
+import { Input, Label, Select, Textarea } from "@/components/ui/input";
+import type { AccountOption, DeskData } from "@/lib/dto";
 import { formatRial, formatWeight, parseAmount } from "@/lib/format";
 import { KIND_LABEL } from "@/lib/labels";
+import { trimDecimal } from "@/lib/number-input";
 import { cashAction, coinAction, goldInAction, goldOutAction, goldTradeAction, meltAction, sendPiecesAction, type ActionFail, type ActionOk } from "@/server/actions";
-import { emptySettle, moneyFromSettle, SettleBox, type SettleValue } from "@/components/settle-box";
-import { Button } from "@/components/ui/button";
-import { Input, Label, Select, Textarea } from "@/components/ui/input";
 
 const tabs = [
   { id: "in", label: "ورود طلا" },
@@ -24,7 +29,13 @@ const tabs = [
   { id: "send", label: "ارسال تکه" },
 ];
 
-function usePost() {
+type PartyProps = {
+  people: AccountOption[];
+  insertedId: string | null;
+  onNewPerson: () => void;
+};
+
+function usePost(onDone?: () => void) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -36,40 +47,30 @@ function usePost() {
         setError(result.error);
         return;
       }
-      toast.success("سند ثبت شد");
-      router.push(`/documents/${result.id}`);
+      toastSaved(result.number, () => router.push(`/documents/${result.id}`));
+      onDone?.();
       router.refresh();
     });
   }
   return { error, pending, run };
 }
 
-function AccountSelect({
-  accounts,
-  value,
-  onChange,
-}: {
-  accounts: DeskData["accounts"];
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const groups = [...new Set(accounts.map((account) => account.groupLabel))];
-  return (
-    <Select value={value} onChange={(event) => onChange(event.target.value)}>
-      <option value="">انتخاب حساب</option>
-      {groups.map((group) => (
-        <optgroup key={group} label={group}>
-          {accounts
-            .filter((account) => account.groupLabel === group)
-            .map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.code} — {account.title}
-              </option>
-            ))}
-        </optgroup>
-      ))}
-    </Select>
-  );
+function usePulse() {
+  const [pulse, setPulse] = useState(0);
+  const [focusAt, setFocusAt] = useState<"start" | "next">("start");
+  function focusNext() {
+    setFocusAt("next");
+    setPulse((n) => n + 1);
+  }
+  function focusStart() {
+    setFocusAt("start");
+    setPulse((n) => n + 1);
+  }
+  return { pulse, focusAt, focusNext, focusStart };
+}
+
+function settleDirty(value: SettleValue) {
+  return Boolean(value.cash.trim() || value.banks.some((line) => line.amount.trim()) || value.coinOn || value.goldOn);
 }
 
 function ErrorText({ error }: { error: string | null }) {
@@ -80,6 +81,15 @@ function ErrorText({ error }: { error: string | null }) {
 export function SanadDesk({ data, tab }: { data: DeskData; tab: string }) {
   const initial = tabs.some((item) => item.id === tab) ? tab : "in";
   const [current, setCurrent] = useState(initial);
+  const [extra, setExtra] = useState<AccountOption[]>([]);
+  const [insertedId, setInsertedId] = useState<string | null>(null);
+  const [openNew, setOpenNew] = useState(false);
+  const people = useMemo(() => {
+    const map = new Map(data.accounts.map((account) => [account.id, account]));
+    for (const person of extra) if (!map.has(person.id)) map.set(person.id, person);
+    return [...map.values()].sort((a, b) => a.code - b.code);
+  }, [data.accounts, extra]);
+  const party: PartyProps = { people, insertedId, onNewPerson: () => setOpenNew(true) };
   return (
     <div className="space-y-4">
       <div>
@@ -92,38 +102,63 @@ export function SanadDesk({ data, tab }: { data: DeskData; tab: string }) {
             key={item.id}
             type="button"
             onClick={() => setCurrent(item.id)}
-            className={`rounded-full px-3 py-1.5 text-sm ${current === item.id ? "bg-[#16211e] text-[#f4ecdc]" : "bg-white text-[#3f382f]"}`}
+            className={`min-h-11 rounded-full px-3 py-1.5 text-sm md:min-h-0 ${current === item.id ? "bg-[#16211e] text-[#f4ecdc]" : "bg-white text-[#3f382f]"}`}
           >
             {item.label}
           </button>
         ))}
       </div>
       <div className="panel p-4 md:p-6">
-        {current === "in" ? <GoldIn data={data} /> : null}
-        {current === "out" ? <GoldOut data={data} /> : null}
-        {current === "buy" ? <GoldTrade data={data} side="BUY" /> : null}
-        {current === "sell" ? <GoldTrade data={data} side="SELL" /> : null}
+        {current === "in" ? <GoldIn data={data} {...party} /> : null}
+        {current === "out" ? <GoldOut data={data} {...party} /> : null}
+        {current === "buy" ? <GoldTrade data={data} side="BUY" {...party} /> : null}
+        {current === "sell" ? <GoldTrade data={data} side="SELL" {...party} /> : null}
         {current === "melt" ? <Melt data={data} /> : null}
-        {current === "coin" ? <CoinForm data={data} /> : null}
-        {current === "cash" ? <CashForm data={data} /> : null}
-        {current === "send" ? <SendForm data={data} /> : null}
+        {current === "coin" ? <CoinForm data={data} {...party} /> : null}
+        {current === "cash" ? <CashForm data={data} {...party} /> : null}
+        {current === "send" ? <SendForm data={data} {...party} /> : null}
       </div>
+      <NewPersonDialog
+        open={openNew}
+        onOpenChange={setOpenNew}
+        onCreated={(person) => {
+          setExtra((prev) => (prev.some((item) => item.id === person.id) ? prev : [...prev, person]));
+          setInsertedId(person.id);
+          setOpenNew(false);
+        }}
+      />
     </div>
   );
 }
 
-function GoldIn({ data }: { data: DeskData }) {
-  const post = usePost();
+function GoldIn({ data, people, insertedId, onNewPerson }: { data: DeskData } & PartyProps) {
+  const focus = usePulse();
+  const post = usePost(() => {
+    setScale("");
+    setConditional(false);
+    setEnvelopeNo("");
+    setAng("");
+    setNote("");
+    focus.focusNext();
+  });
   const [kind, setKind] = useState<"MOTAFARREQE" | "ABSHODE">("MOTAFARREQE");
   const [conditional, setConditional] = useState(false);
   const [accountId, setAccountId] = useState("");
   const [scale, setScale] = useState("");
-  const [ayar, setAyar] = useState(data.defaultAyar);
+  const [ayar, setAyar] = useState(trimDecimal(data.defaultAyar));
   const [labId, setLabId] = useState("");
   const [envelopeNo, setEnvelopeNo] = useState("");
   const [ang, setAng] = useState("");
   const [note, setNote] = useState("");
-  const shownAyar = conditional ? data.standardAyar : ayar || (kind === "MOTAFARREQE" ? data.defaultAyar : data.standardAyar);
+  useInsertedPerson(insertedId, setAccountId);
+  useFormMemory("sanad-in", { kind, ayar, labId }, (saved) => {
+    if (saved.kind === "ABSHODE" || saved.kind === "MOTAFARREQE") {
+      setKind(saved.kind);
+      setAyar(saved.ayar || trimDecimal(saved.kind === "MOTAFARREQE" ? data.defaultAyar : data.standardAyar));
+    } else if (saved.ayar) setAyar(saved.ayar);
+    if (saved.labId && data.labs.some((lab) => lab.id === saved.labId)) setLabId(saved.labId);
+  });
+  const shownAyar = conditional ? trimDecimal(data.standardAyar) : ayar || trimDecimal(kind === "MOTAFARREQE" ? data.defaultAyar : data.standardAyar);
   const preview = useMemo(() => {
     try {
       return formatWeight(new Decimal(parseAmount(scale)).mul(shownAyar).div(data.standardAyar));
@@ -132,19 +167,31 @@ function GoldIn({ data }: { data: DeskData }) {
     }
   }, [scale, shownAyar, data.standardAyar]);
 
+  function wipe() {
+    setAccountId("");
+    setScale("");
+    setConditional(false);
+    setEnvelopeNo("");
+    setAng("");
+    setNote("");
+    focus.focusStart();
+  }
+
   return (
-    <form
+    <EntryForm
       className="grid gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
+      pending={post.pending}
+      dirty={Boolean(accountId || scale.trim() || note.trim() || ang.trim() || envelopeNo.trim() || conditional)}
+      focusNonce={focus.pulse}
+      focusTarget={focus.focusAt}
+      onNewPerson={onNewPerson}
+      onClear={wipe}
+      onSubmit={() => {
         post.run(() => goldInAction({ date: data.today, accountId, kind, scale, ayar: conditional ? undefined : ayar, conditional, labId, envelopeNo, ang, note }));
       }}
     >
       <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <Label>حساب</Label>
-          <AccountSelect accounts={data.accounts} value={accountId} onChange={setAccountId} />
-        </div>
+        <PersonPicker people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
         <div>
           <Label>نوع</Label>
           <Select
@@ -152,7 +199,7 @@ function GoldIn({ data }: { data: DeskData }) {
             onChange={(event) => {
               const next = event.target.value as "MOTAFARREQE" | "ABSHODE";
               setKind(next);
-              setAyar(next === "MOTAFARREQE" ? data.defaultAyar : data.standardAyar);
+              setAyar(trimDecimal(next === "MOTAFARREQE" ? data.defaultAyar : data.standardAyar));
             }}
           >
             <option value="MOTAFARREQE">متفرقه</option>
@@ -161,15 +208,15 @@ function GoldIn({ data }: { data: DeskData }) {
         </div>
         <div>
           <Label>وزن ترازو (گرم)</Label>
-          <Input value={scale} onChange={(event) => setScale(event.target.value)} placeholder="70/53" />
+          <NumberField data-entry-next="" kind="decimal" value={scale} onChange={setScale} placeholder="۷۰/۵۳" />
         </div>
         <div>
           <Label>عیار</Label>
-          <Input value={shownAyar} disabled={conditional} onChange={(event) => setAyar(event.target.value)} />
+          <NumberField kind="decimal" value={shownAyar} disabled={conditional} onChange={setAyar} />
         </div>
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={conditional} onChange={(event) => setConditional(event.target.checked)} />
+      <label className="flex min-h-11 items-center gap-2 text-sm">
+        <input type="checkbox" className="size-5" checked={conditional} onChange={(event) => setConditional(event.target.checked)} />
         شرطی است؛ تا جواب ری عیار {data.standardAyar} حساب می‌شود
       </label>
       {preview ? <p className="text-sm">معادل ۷۵۰: {preview} گرم</p> : null}
@@ -197,41 +244,53 @@ function GoldIn({ data }: { data: DeskData }) {
         <Textarea value={note} onChange={(event) => setNote(event.target.value)} />
       </div>
       <ErrorText error={post.error} />
-      <Button disabled={post.pending} className="bg-[#1d4e89]">{post.pending ? "در حال ثبت…" : "ثبت ورود"}</Button>
-    </form>
+      <SaveButton disabled={post.pending} className="bg-[#1d4e89]">{post.pending ? "در حال ثبت…" : "ثبت ورود"}</SaveButton>
+    </EntryForm>
   );
 }
 
-function GoldOut({ data }: { data: DeskData }) {
-  const post = usePost();
+function GoldOut({ data, people, insertedId, onNewPerson }: { data: DeskData } & PartyProps) {
+  const focus = usePulse();
   const [accountId, setAccountId] = useState("");
   const [itemId, setItemId] = useState(data.pieces[0]?.id ?? "");
   const piece = data.pieces.find((item) => item.id === itemId);
   const [scale, setScale] = useState(piece?.scale ?? "");
+  useInsertedPerson(insertedId, setAccountId);
+  const post = usePost(() => {
+    setScale(data.pieces.find((item) => item.id === itemId)?.scale ?? "");
+    focus.focusNext();
+  });
   return (
-    <form
+    <EntryForm
       className="grid gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
+      pending={post.pending}
+      dirty={Boolean(accountId)}
+      focusNonce={focus.pulse}
+      focusTarget={focus.focusAt}
+      onNewPerson={onNewPerson}
+      onClear={() => {
+        setAccountId("");
+        setScale(data.pieces[0]?.scale ?? "");
+        setItemId(data.pieces[0]?.id ?? "");
+        focus.focusStart();
+      }}
+      onSubmit={() => {
         post.run(() => goldOutAction({ date: data.today, accountId, itemId, scale }));
       }}
     >
       <p className="text-sm text-[#6d6458]">عیار را دوباره نمی‌پرسد؛ همان عیار ورود است. اگر وزن کمتر از مانده باشد، بقیه در صندوق می‌ماند (قیچی).</p>
-      <div>
-        <Label>حساب گیرنده</Label>
-        <AccountSelect accounts={data.accounts} value={accountId} onChange={setAccountId} />
-      </div>
+      <PersonPicker label="حساب گیرنده" people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
       <PiecePick data={data} itemId={itemId} onChange={(id) => {
         setItemId(id);
         setScale(data.pieces.find((item) => item.id === id)?.scale ?? "");
       }} />
       <div>
         <Label>وزن خروجی</Label>
-        <Input value={scale} onChange={(event) => setScale(event.target.value)} />
+        <NumberField data-entry-next="" kind="decimal" value={scale} onChange={setScale} />
       </div>
       <ErrorText error={post.error} />
-      <Button disabled={post.pending} variant="danger">{post.pending ? "در حال ثبت…" : "ثبت خروج"}</Button>
-    </form>
+      <SaveButton disabled={post.pending} variant="danger">{post.pending ? "در حال ثبت…" : "ثبت خروج"}</SaveButton>
+    </EntryForm>
   );
 }
 
@@ -241,7 +300,7 @@ function PiecePick({ data, itemId, onChange }: { data: DeskData; itemId: string;
       {data.pieces.length === 0 ? <p className="p-3 text-sm text-[#6d6458]">قطعهٔ موجودی نیست.</p> : null}
       {data.pieces.map((piece) => (
         <label key={piece.id} className={`flex cursor-pointer items-start gap-2 rounded-lg px-2 py-2 ${piece.stale ? "bg-[#f5edff]" : piece.pending ? "bg-[#fff6eb]" : "hover:bg-[#faf6ee]"}`}>
-          <input type="radio" name="piece" checked={itemId === piece.id} onChange={() => onChange(piece.id)} />
+          <input type="radio" className="mt-1 size-5" name="piece" checked={itemId === piece.id} onChange={() => onChange(piece.id)} />
           <span className="text-sm">
             <b>{piece.codeLabel}</b> {piece.kindLabel} — {formatWeight(piece.scale)} گرم، عیار {piece.ayar}، معادل {formatWeight(piece.weight750)}
             {piece.pending ? " · شرطی" : ""}
@@ -254,12 +313,12 @@ function PiecePick({ data, itemId, onChange }: { data: DeskData; itemId: string;
   );
 }
 
-function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
-  const post = usePost();
+function GoldTrade({ data, side, people, insertedId, onNewPerson }: { data: DeskData; side: "BUY" | "SELL" } & PartyProps) {
+  const focus = usePulse();
   const [accountId, setAccountId] = useState("");
   const [kind, setKind] = useState<"MOTAFARREQE" | "ABSHODE">("MOTAFARREQE");
   const [scale, setScale] = useState("");
-  const [ayar, setAyar] = useState(data.defaultAyar);
+  const [ayar, setAyar] = useState(trimDecimal(data.defaultAyar));
   const [itemId, setItemId] = useState(data.pieces[0]?.id ?? "");
   const [sellScale, setSellScale] = useState(data.pieces[0]?.scale ?? "");
   const [mode, setMode] = useState<PriceMode>("mesghal");
@@ -269,6 +328,25 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
   const [settle, setSettle] = useState<SettleValue>(() => emptySettle(data));
   const [ang, setAng] = useState("");
   const [note, setNote] = useState("");
+  useInsertedPerson(insertedId, setAccountId);
+  useFormMemory(side === "BUY" ? "sanad-buy" : "sanad-sell", { kind, ayar, mode }, (saved) => {
+    if (side === "BUY" && (saved.kind === "ABSHODE" || saved.kind === "MOTAFARREQE")) setKind(saved.kind);
+    if (side === "BUY" && saved.ayar) setAyar(saved.ayar);
+    if (saved.mode === "mesghal" || saved.mode === "gram" || saved.mode === "total") {
+      setMode(saved.mode);
+      if (saved.mode === "gram") setMazane(data.mazane?.gram ?? "");
+      if (saved.mode === "mesghal") setMazane(data.mazane?.mesghal ?? "");
+    }
+  });
+  const post = usePost(() => {
+    setScale("");
+    setTotal("");
+    setAng("");
+    setNote("");
+    setSellScale(data.pieces.find((item) => item.id === itemId)?.scale ?? "");
+    setSettle((value) => clearSettleAmounts(value));
+    focus.focusNext();
+  });
   const piece = data.pieces.find((item) => item.id === itemId);
 
   const preview = useMemo(() => {
@@ -291,11 +369,29 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
     }
   }, [side, scale, ayar, piece, sellScale, mode, mazane, total, data]);
 
+  function wipe() {
+    setAccountId("");
+    setScale("");
+    setTotal("");
+    setAng("");
+    setNote("");
+    setDate(data.today);
+    setSettle(emptySettle(data));
+    setSellScale(data.pieces[0]?.scale ?? "");
+    setItemId(data.pieces[0]?.id ?? "");
+    focus.focusStart();
+  }
+
   return (
-    <form
+    <EntryForm
       className="grid gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
+      pending={post.pending}
+      dirty={Boolean(accountId || scale.trim() || total.trim() || note.trim() || ang.trim() || date !== data.today || settleDirty(settle))}
+      focusNonce={focus.pulse}
+      focusTarget={focus.focusAt}
+      onNewPerson={onNewPerson}
+      onClear={wipe}
+      onSubmit={() => {
         post.run(() =>
           goldTradeAction({
             side,
@@ -332,10 +428,7 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
           : "فروش از موجودی کم می‌کند و مبلغ را بدهکار شخص یا وصول نقد می‌کند. قیمت روی وزن ۷۵۰ همان قطعه است."}
       </p>
       <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <Label>حساب</Label>
-          <AccountSelect accounts={data.accounts} value={accountId} onChange={setAccountId} />
-        </div>
+        <PersonPicker people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
         <div>
           <Label>تاریخ</Label>
           <Input value={date} onChange={(event) => setDate(event.target.value)} />
@@ -352,11 +445,11 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
           </div>
           <div>
             <Label>وزن ترازو</Label>
-            <Input value={scale} onChange={(event) => setScale(event.target.value)} />
+            <NumberField data-entry-next="" kind="decimal" value={scale} onChange={setScale} placeholder="۷۰/۵۳" />
           </div>
           <div>
             <Label>عیار</Label>
-            <Input value={ayar} onChange={(event) => setAyar(event.target.value)} />
+            <NumberField kind="decimal" value={ayar} onChange={setAyar} />
           </div>
         </div>
       ) : (
@@ -371,7 +464,7 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
           />
           <div>
             <Label>وزن فروشی از همین قطعه</Label>
-            <Input value={sellScale} onChange={(event) => setSellScale(event.target.value)} />
+            <NumberField data-entry-next="" kind="decimal" value={sellScale} onChange={setSellScale} />
           </div>
         </>
       )}
@@ -395,12 +488,12 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
         {mode === "total" ? (
           <div>
             <Label>مبلغ کل (ریال)</Label>
-            <Input value={total} onChange={(event) => setTotal(event.target.value)} />
+            <NumberField kind="money" value={total} onChange={setTotal} />
           </div>
         ) : (
           <div>
             <Label>مظنه (ریال)</Label>
-            <Input value={mazane} onChange={(event) => setMazane(event.target.value)} />
+            <NumberField kind="money" value={mazane} onChange={setMazane} />
           </div>
         )}
       </div>
@@ -428,27 +521,49 @@ function GoldTrade({ data, side }: { data: DeskData; side: "BUY" | "SELL" }) {
         <Textarea value={note} onChange={(event) => setNote(event.target.value)} />
       </div>
       <ErrorText error={post.error} />
-      <Button disabled={post.pending} variant={side === "SELL" ? "danger" : "default"}>{post.pending ? "در حال ثبت…" : side === "BUY" ? "ثبت خرید" : "ثبت فروش"}</Button>
-    </form>
+      <SaveButton disabled={post.pending} variant={side === "SELL" ? "danger" : "default"}>{post.pending ? "در حال ثبت…" : side === "BUY" ? "ثبت خرید" : "ثبت فروش"}</SaveButton>
+    </EntryForm>
   );
 }
 
 function Melt({ data }: { data: DeskData }) {
-  const post = usePost();
+  const focus = usePulse();
   const [meltAccountId, setMeltAccountId] = useState(data.expenseAccounts[0]?.id ?? "");
   const [picked, setPicked] = useState<Record<string, { on: boolean; scale: string }>>(() =>
     Object.fromEntries(data.pieces.map((piece) => [piece.id, { on: false, scale: piece.scale }])),
   );
   const [backScale, setBackScale] = useState("");
-  const [backAyar, setBackAyar] = useState(data.standardAyar);
+  const [backAyar, setBackAyar] = useState(trimDecimal(data.standardAyar));
   const [conditional, setConditional] = useState(false);
   const [ang, setAng] = useState("");
   const [note, setNote] = useState("");
+  useFormMemory("sanad-melt", { meltAccountId }, (saved) => {
+    if (saved.meltAccountId && data.expenseAccounts.some((account) => account.id === saved.meltAccountId)) setMeltAccountId(saved.meltAccountId);
+  });
+  const post = usePost(() => {
+    setPicked((prev) => Object.fromEntries(data.pieces.map((piece) => [piece.id, { on: false, scale: prev[piece.id]?.scale ?? piece.scale }])));
+    setBackScale("");
+    setConditional(false);
+    setAng("");
+    setNote("");
+    focus.focusNext();
+  });
   return (
-    <form
+    <EntryForm
       className="grid gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
+      pending={post.pending}
+      dirty={Boolean(backScale.trim() || ang.trim() || note.trim() || data.pieces.some((piece) => picked[piece.id]?.on))}
+      focusNonce={focus.pulse}
+      focusTarget={focus.focusAt}
+      onClear={() => {
+        setPicked(Object.fromEntries(data.pieces.map((piece) => [piece.id, { on: false, scale: piece.scale }])));
+        setBackScale("");
+        setConditional(false);
+        setAng("");
+        setNote("");
+        focus.focusStart();
+      }}
+      onSubmit={() => {
         const sends = data.pieces.filter((piece) => picked[piece.id]?.on).map((piece) => ({ itemId: piece.id, scale: picked[piece.id].scale }));
         post.run(() =>
           meltAction({
@@ -464,7 +579,7 @@ function Melt({ data }: { data: DeskData }) {
       <p className="text-sm text-[#6d6458]">طلا به حساب سوخت (ذوب) خارج می‌شود و آبشدهٔ برگشتی از همان حساب وارد می‌شود. اختلاف گرم، زیان ذوب و بدهکار همان حساب است.</p>
       <div>
         <Label>حساب ذوب</Label>
-        <Select value={meltAccountId} onChange={(event) => setMeltAccountId(event.target.value)}>
+        <Select data-autofocus="" value={meltAccountId} onChange={(event) => setMeltAccountId(event.target.value)}>
           {data.expenseAccounts.map((account) => (
             <option key={account.id} value={account.id}>{account.title}</option>
           ))}
@@ -475,14 +590,16 @@ function Melt({ data }: { data: DeskData }) {
           <label key={piece.id} className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
+              className="size-5"
               checked={picked[piece.id]?.on ?? false}
               onChange={(event) => setPicked((prev) => ({ ...prev, [piece.id]: { ...prev[piece.id], on: event.target.checked } }))}
             />
             <span className="flex-1">{piece.codeLabel} {piece.kindLabel} {formatWeight(piece.scale)}</span>
-            <Input
+            <NumberField
               className="w-28"
+              kind="decimal"
               value={picked[piece.id]?.scale ?? ""}
-              onChange={(event) => setPicked((prev) => ({ ...prev, [piece.id]: { ...prev[piece.id], scale: event.target.value } }))}
+              onChange={(scale) => setPicked((prev) => ({ ...prev, [piece.id]: { ...prev[piece.id], scale } }))}
             />
           </label>
         ))}
@@ -490,14 +607,14 @@ function Melt({ data }: { data: DeskData }) {
       <div className="grid gap-3 md:grid-cols-3">
         <div>
           <Label>وزن آبشدهٔ برگشتی</Label>
-          <Input value={backScale} onChange={(event) => setBackScale(event.target.value)} />
+          <NumberField data-entry-next="" kind="decimal" value={backScale} onChange={setBackScale} />
         </div>
         <div>
           <Label>عیار برگشتی</Label>
-          <Input disabled={conditional} value={conditional ? data.standardAyar : backAyar} onChange={(event) => setBackAyar(event.target.value)} />
+          <NumberField kind="decimal" disabled={conditional} value={conditional ? trimDecimal(data.standardAyar) : backAyar} onChange={setBackAyar} />
         </div>
-        <label className="mt-7 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={conditional} onChange={(event) => setConditional(event.target.checked)} />
+        <label className="mt-7 flex min-h-11 items-center gap-2 text-sm">
+          <input type="checkbox" className="size-5" checked={conditional} onChange={(event) => setConditional(event.target.checked)} />
           برگشتی شرطی است
         </label>
       </div>
@@ -507,13 +624,13 @@ function Melt({ data }: { data: DeskData }) {
       </div>
       <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="شرح ذوب" />
       <ErrorText error={post.error} />
-      <Button disabled={post.pending}>{post.pending ? "در حال ثبت…" : "ثبت ذوب"}</Button>
-    </form>
+      <SaveButton disabled={post.pending}>{post.pending ? "در حال ثبت…" : "ثبت ذوب"}</SaveButton>
+    </EntryForm>
   );
 }
 
-function CoinForm({ data }: { data: DeskData }) {
-  const post = usePost();
+function CoinForm({ data, people, insertedId, onNewPerson }: { data: DeskData } & PartyProps) {
+  const focus = usePulse();
   const [op, setOp] = useState<"BUY" | "SELL" | "RECEIVE" | "PAY">("BUY");
   const [accountId, setAccountId] = useState("");
   const [coinTypeId, setCoinTypeId] = useState(data.coins[0]?.id ?? "");
@@ -523,6 +640,23 @@ function CoinForm({ data }: { data: DeskData }) {
   const [date, setDate] = useState(data.today);
   const [settle, setSettle] = useState<SettleValue>(() => emptySettle(data));
   const [note, setNote] = useState("");
+  useInsertedPerson(insertedId, setAccountId);
+  useFormMemory("sanad-coin", { op, coinTypeId }, (saved) => {
+    const nextOp = saved.op === "BUY" || saved.op === "SELL" || saved.op === "RECEIVE" || saved.op === "PAY" ? saved.op : "BUY";
+    if (saved.op) setOp(nextOp);
+    const id = saved.coinTypeId && data.coins.some((item) => item.id === saved.coinTypeId) ? saved.coinTypeId : data.coins[0]?.id;
+    if (!id) return;
+    setCoinTypeId(id);
+    const next = data.coins.find((item) => item.id === id);
+    if (!next) return;
+    setUnitPrice(nextOp === "SELL" ? next.sell : nextOp === "BUY" ? next.buy : "");
+  });
+  const post = usePost(() => {
+    setCount("1");
+    setNote("");
+    setSettle((value) => clearSettleAmounts(value));
+    focus.focusNext();
+  });
   const total = useMemo(() => {
     try {
       const n = Number(parseAmount(count).toFixed(0));
@@ -533,10 +667,22 @@ function CoinForm({ data }: { data: DeskData }) {
     }
   }, [count, unitPrice]);
   return (
-    <form
+    <EntryForm
       className="grid gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
+      pending={post.pending}
+      dirty={Boolean(accountId || note.trim() || count.trim() !== "1" || date !== data.today || settleDirty(settle))}
+      focusNonce={focus.pulse}
+      focusTarget={focus.focusAt}
+      onNewPerson={onNewPerson}
+      onClear={() => {
+        setAccountId("");
+        setCount("1");
+        setNote("");
+        setDate(data.today);
+        setSettle(emptySettle(data));
+        focus.focusStart();
+      }}
+      onSubmit={() => {
         post.run(() =>
           coinAction({
             date,
@@ -572,7 +718,7 @@ function CoinForm({ data }: { data: DeskData }) {
           <button
             key={item}
             type="button"
-            className={`rounded-full px-3 py-1 text-sm ${op === item ? "bg-[#16211e] text-white" : "bg-[#faf6ee]"}`}
+            className={`min-h-11 rounded-full px-3 py-1 text-sm md:min-h-0 ${op === item ? "bg-[#16211e] text-white" : "bg-[#faf6ee]"}`}
             onClick={() => {
               setOp(item);
               if (!coin) return;
@@ -586,10 +732,7 @@ function CoinForm({ data }: { data: DeskData }) {
         ))}
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <Label>حساب</Label>
-          <AccountSelect accounts={data.accounts} value={accountId} onChange={setAccountId} />
-        </div>
+        <PersonPicker people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
         <div>
           <Label>سکه</Label>
           <Select
@@ -609,11 +752,11 @@ function CoinForm({ data }: { data: DeskData }) {
         </div>
         <div>
           <Label>تعداد</Label>
-          <Input value={count} onChange={(event) => setCount(event.target.value)} />
+          <NumberField data-entry-next="" kind="int" value={count} onChange={setCount} />
         </div>
         <div>
           <Label>{op === "RECEIVE" || op === "PAY" ? "اجرت هر عدد (ریال)" : "فی هر عدد (ریال)"}</Label>
-          <Input value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} />
+          <NumberField kind="money" value={unitPrice} onChange={setUnitPrice} />
         </div>
       </div>
       {total !== null ? <p className="text-sm">جمع: {formatRial(total)} ریال</p> : null}
@@ -631,39 +774,57 @@ function CoinForm({ data }: { data: DeskData }) {
       />
       <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="شرح" />
       <ErrorText error={post.error} />
-      <Button disabled={post.pending}>{post.pending ? "در حال ثبت…" : "ثبت سند سکه"}</Button>
-    </form>
+      <SaveButton disabled={post.pending}>{post.pending ? "در حال ثبت…" : "ثبت سند سکه"}</SaveButton>
+    </EntryForm>
   );
 }
 
-function CashForm({ data }: { data: DeskData }) {
-  const post = usePost();
+function CashForm({ data, people, insertedId, onNewPerson }: { data: DeskData } & PartyProps) {
+  const focus = usePulse();
   const [direction, setDirection] = useState<"IN" | "OUT">("IN");
   const [accountId, setAccountId] = useState("");
   const [amount, setAmount] = useState("");
   const [via, setVia] = useState<"cash" | "bank">("cash");
   const [bankId, setBankId] = useState(data.banks[0]?.id ?? "");
   const [note, setNote] = useState("");
+  useInsertedPerson(insertedId, setAccountId);
+  useFormMemory("sanad-cash", { direction, via, bankId }, (saved) => {
+    if (saved.direction === "IN" || saved.direction === "OUT") setDirection(saved.direction);
+    if (saved.via === "cash" || saved.via === "bank") setVia(saved.via);
+    if (saved.bankId && data.banks.some((bank) => bank.id === saved.bankId)) setBankId(saved.bankId);
+  });
+  const post = usePost(() => {
+    setAmount("");
+    setNote("");
+    focus.focusNext();
+  });
   return (
-    <form
+    <EntryForm
       className="grid gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
+      pending={post.pending}
+      dirty={Boolean(accountId || amount.trim() || note.trim())}
+      focusNonce={focus.pulse}
+      focusTarget={focus.focusAt}
+      onNewPerson={onNewPerson}
+      onClear={() => {
+        setAccountId("");
+        setAmount("");
+        setNote("");
+        focus.focusStart();
+      }}
+      onSubmit={() => {
         post.run(() => cashAction({ date: data.today, accountId, direction, amount, via, bankAccountId: bankId, note }));
       }}
     >
       <p className="text-sm text-[#4d6278]">برای وجهِ چندبخشی و حوالهٔ صندوق به بانک، صفحهٔ صندوق را باز کنید.</p>
       <div className="flex gap-2">
-        <button type="button" className={`px-3 py-2 text-sm ${direction === "IN" ? "bg-[#1a56a8] text-white" : "border border-[#8eadd4] bg-white"}`} onClick={() => setDirection("IN")}>دریافت</button>
-        <button type="button" className={`px-3 py-2 text-sm ${direction === "OUT" ? "bg-[#a32020] text-white" : "border border-[#8eadd4] bg-white"}`} onClick={() => setDirection("OUT")}>پرداخت</button>
+        <button type="button" className={`min-h-11 px-3 py-2 text-sm md:min-h-0 ${direction === "IN" ? "bg-[#1a56a8] text-white" : "border border-[#8eadd4] bg-white"}`} onClick={() => setDirection("IN")}>دریافت</button>
+        <button type="button" className={`min-h-11 px-3 py-2 text-sm md:min-h-0 ${direction === "OUT" ? "bg-[#a32020] text-white" : "border border-[#8eadd4] bg-white"}`} onClick={() => setDirection("OUT")}>پرداخت</button>
       </div>
-      <div>
-        <Label>حساب شخص</Label>
-        <AccountSelect accounts={data.accounts} value={accountId} onChange={setAccountId} />
-      </div>
+      <PersonPicker label="حساب شخص" people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
       <div>
         <Label>مبلغ (ریال)</Label>
-        <Input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="20000000" />
+        <NumberField data-entry-next="" kind="money" value={amount} onChange={setAmount} placeholder="۲۰٬۰۰۰٬۰۰۰" />
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div>
@@ -686,17 +847,25 @@ function CashForm({ data }: { data: DeskData }) {
       </div>
       <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="مثلاً بابت تسویه مانده" />
       <ErrorText error={post.error} />
-      <Button disabled={post.pending}>{post.pending ? "در حال ثبت…" : "ثبت وجه"}</Button>
-    </form>
+      <SaveButton disabled={post.pending}>{post.pending ? "در حال ثبت…" : "ثبت وجه"}</SaveButton>
+    </EntryForm>
   );
 }
 
-function SendForm({ data }: { data: DeskData }) {
-  const post = usePost();
+function SendForm({ data, people, insertedId, onNewPerson }: { data: DeskData } & PartyProps) {
+  const focus = usePulse();
   const [accountId, setAccountId] = useState("");
   const [min, setMin] = useState("");
   const [max, setMax] = useState("30");
   const [picked, setPicked] = useState<string[]>([]);
+  useInsertedPerson(insertedId, setAccountId);
+  useFormMemory("sanad-send", { max }, (saved) => {
+    if (saved.max) setMax(saved.max);
+  });
+  const post = usePost(() => {
+    setPicked([]);
+    focus.focusNext();
+  });
   const filtered = data.pieces.filter((piece) => {
     const weight = Number(piece.scale);
     try {
@@ -708,26 +877,33 @@ function SendForm({ data }: { data: DeskData }) {
     }
   });
   return (
-    <form
+    <EntryForm
       className="grid gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
+      pending={post.pending}
+      dirty={Boolean(accountId || picked.length || min.trim())}
+      focusNonce={focus.pulse}
+      focusTarget={focus.focusAt}
+      onNewPerson={onNewPerson}
+      onClear={() => {
+        setAccountId("");
+        setPicked([]);
+        setMin("");
+        focus.focusStart();
+      }}
+      onSubmit={() => {
         post.run(() => sendPiecesAction({ date: data.today, accountId, itemIds: picked }));
       }}
     >
       <p className="text-sm text-[#6d6458]">تکه‌های ریز موجود را یکجا به حسابی مثل ذوب می‌فرستد. وزن کامل مانده خارج می‌شود.</p>
-      <div>
-        <Label>حساب مقصد</Label>
-        <AccountSelect accounts={data.accounts} value={accountId} onChange={setAccountId} />
-      </div>
+      <PersonPicker label="حساب مقصد" people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label>از وزن</Label>
-          <Input value={min} onChange={(event) => setMin(event.target.value)} />
+          <NumberField data-entry-next="" kind="decimal" value={min} onChange={setMin} />
         </div>
         <div>
           <Label>تا وزن</Label>
-          <Input value={max} onChange={(event) => setMax(event.target.value)} />
+          <NumberField kind="decimal" value={max} onChange={setMax} />
         </div>
       </div>
       <div className="max-h-56 space-y-2 overflow-auto">
@@ -736,6 +912,7 @@ function SendForm({ data }: { data: DeskData }) {
           <label key={piece.id} className="flex gap-2 text-sm">
             <input
               type="checkbox"
+              className="size-5"
               checked={picked.includes(piece.id)}
               onChange={(event) => setPicked((prev) => event.target.checked ? [...prev, piece.id] : prev.filter((id) => id !== piece.id))}
             />
@@ -744,7 +921,7 @@ function SendForm({ data }: { data: DeskData }) {
         ))}
       </div>
       <ErrorText error={post.error} />
-      <Button disabled={post.pending}>{post.pending ? "در حال ثبت…" : "ارسال انتخاب‌شده‌ها"}</Button>
-    </form>
+      <SaveButton disabled={post.pending}>{post.pending ? "در حال ثبت…" : "ارسال انتخاب‌شده‌ها"}</SaveButton>
+    </EntryForm>
   );
 }

@@ -67,6 +67,7 @@ button, input, select, textarea {
 .field:focus {
   border-color: #1a56a8;
   box-shadow: 0 0 0 2px rgba(26, 86, 168, 0.2);
+  scroll-margin-bottom: 5.5rem;
 }
 
 .ledger {
