@@ -5,6 +5,7 @@ import type { AccountGroup } from "@prisma/client";
 import { GROUP_LABEL } from "@/lib/labels";
 import { normalizeDigits } from "@/lib/number-input";
 import type { AccountOption } from "@/lib/dto";
+import { invalidateSearchPeople } from "@/lib/search-cache";
 import { createAccountAction } from "@/server/actions";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input, Label, Select } from "@/components/ui/input";
@@ -61,6 +62,7 @@ function QuickPersonForm({ onCreated }: { onCreated: (person: AccountOption) => 
             setError(result.error);
             return;
           }
+          invalidateSearchPeople();
           onCreated({
             id: result.id,
             code: result.code ?? 0,

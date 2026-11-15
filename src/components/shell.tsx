@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { DeskHotkeys } from "@/components/desk-hotkeys";
 import { logoutAction } from "@/server/actions";
 
 const links = [
@@ -53,6 +54,8 @@ export function Shell({
       : [{ href: "/settings", label: "تنظیمات", n: "۱۱" }];
   const all = [...links, ...extra];
   return (
+    <DeskHotkeys role={user.role}>
+      {(openSearch) => (
     <div className="desk min-h-screen pb-16 md:pb-0 md:pr-60">
       <aside className="fixed inset-y-0 right-0 z-20 hidden w-60 flex-col border-l border-[#0a2f66] bg-[#0e3f86] text-white md:flex">
         <div className="border-b border-white/15 px-4 py-4">
@@ -96,6 +99,16 @@ export function Shell({
             </form>
           </div>
         </div>
+        <div className="px-3 pb-2">
+          <button
+            type="button"
+            onClick={openSearch}
+            className="flex min-h-11 w-full items-center justify-between border border-white/25 bg-white/10 px-3 text-sm text-[#d6e6ff]"
+          >
+            <span>جستجو…</span>
+            <span dir="ltr" className="text-[11px] text-[#ffe08a]">F3</span>
+          </button>
+        </div>
         <details className="border-t border-white/15">
           <summary className="cursor-pointer px-3 py-2 text-sm">منوی دفتر</summary>
           <div className="grid grid-cols-2 gap-px bg-white/15">
@@ -107,7 +120,16 @@ export function Shell({
           </div>
         </details>
       </header>
-      <div className="hidden h-1 bg-[#c6a15b] md:block" />
+      <div className="no-print sticky top-0 z-30 hidden border-b-[3px] border-[#c6a15b] bg-[#0e3f86] px-4 py-2 md:block">
+        <button
+          type="button"
+          onClick={openSearch}
+          className="flex h-10 w-full max-w-xl items-center justify-between border border-white/25 bg-white/10 px-3 text-sm text-[#d6e6ff] hover:bg-white/15"
+        >
+          <span>جستجوی شخص، شماره سند یا صفحه…</span>
+          <span dir="ltr" className="text-xs text-[#ffe08a]">F3 · Ctrl+K</span>
+        </button>
+      </div>
       <main className="mx-auto w-full max-w-6xl px-3 py-4 md:px-6 md:py-6">{children}</main>
       <nav className="dock no-print">
         {dock.map((link) => (
@@ -117,5 +139,7 @@ export function Shell({
         ))}
       </nav>
     </div>
+      )}
+    </DeskHotkeys>
   );
 }

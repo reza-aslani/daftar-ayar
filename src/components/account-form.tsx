@@ -8,6 +8,7 @@ import { EntryForm, SaveButton } from "@/components/entry/form";
 import { useFormMemory } from "@/components/entry/memory";
 import { GROUP_LABEL } from "@/lib/labels";
 import { normalizeDigits } from "@/lib/number-input";
+import { invalidateSearchPeople } from "@/lib/search-cache";
 import { createAccountAction, updateAccountAction } from "@/server/actions";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 
@@ -91,6 +92,7 @@ export function AccountForm({
             setError(result.error);
             return;
           }
+          invalidateSearchPeople();
           if (id) {
             router.push(`/accounts/${result.id}`);
             router.refresh();

@@ -59,6 +59,7 @@ export const EntryForm = forwardRef<HTMLFormElement, EntryFormProps>(function En
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      if (document.querySelector("[data-hotkey-layer]")) return;
       const target = event.target;
       if (target instanceof Element && target.closest("form")) return;
       if (document.querySelector("[data-entry-dialog]") && !local.current?.hasAttribute("data-entry-dialog")) return;

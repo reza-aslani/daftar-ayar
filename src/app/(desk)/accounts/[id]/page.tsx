@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GramText, Money, RialText } from "@/components/balance";
+import { RememberPerson } from "@/components/remember-person";
 import { formatJalaliFa } from "@/lib/date";
 import { formatWeight } from "@/lib/format";
 import { DOC_LABEL } from "@/lib/labels";
@@ -20,6 +21,7 @@ export default async function LedgerPage({ params }: { params: Promise<{ id: str
   const asset = account.group === "CASH" || account.group === "BANK";
   return (
     <div className="space-y-4">
+      <RememberPerson id={account.id} code={account.code} title={account.title} group={account.group} groupLabel={account.groupLabel} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-sm text-[#4d6278]">کارت حساب {account.code.toLocaleString("fa-IR")} · {account.groupLabel}</div>
