@@ -2,7 +2,8 @@
 
 import type { DeskData } from "@/lib/dto";
 import { formatRial, parseAmount, parseRial } from "@/lib/format";
-import { Input, Label, Select } from "@/components/ui/input";
+import { NumberField } from "@/components/entry/number-field";
+import { Label, Select } from "@/components/ui/input";
 
 export type BankLine = { bankId: string; amount: string };
 
@@ -34,6 +35,19 @@ export function emptySettle(data: Pick<DeskData, "banks" | "coins" | "pieces" | 
     goldAyar: data.defaultAyar,
     goldKind: "MOTAFARREQE",
     goldItemId: data.pieces[0]?.id ?? "",
+    goldTotal: "",
+  };
+}
+
+export function clearSettleAmounts(value: SettleValue): SettleValue {
+  return {
+    ...value,
+    cash: "",
+    banks: value.banks.map((line) => ({ ...line, amount: "" })),
+    coinOn: false,
+    coinCount: "",
+    goldOn: false,
+    goldScale: "",
     goldTotal: "",
   };
 }
@@ -134,7 +148,7 @@ export function SettleBox({
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <Label>نقد صندوق (ریال)</Label>
-            <Input inputMode="numeric" value={value.cash} onChange={(event) => patch({ cash: event.target.value })} placeholder="مثلاً ۴۰۰۰۰۰۰۰" />
+            <NumberField kind="money" value={value.cash} onChange={(cash) => patch({ cash })} placeholder="مثلاً ۴۰۰۰۰۰۰۰" />
           </div>
           {value.banks.map((line, index) => (
             <div key={index} className="grid grid-cols-2 gap-2">
@@ -156,12 +170,12 @@ export function SettleBox({
               </div>
               <div>
                 <Label>مبلغ بانک</Label>
-                <Input
-                  inputMode="numeric"
+                <NumberField
+                  kind="money"
                   value={line.amount}
-                  onChange={(event) => {
+                  onChange={(amount) => {
                     const banks = value.banks.slice();
-                    banks[index] = { ...line, amount: event.target.value };
+                    banks[index] = { ...line, amount };
                     patch({ banks });
                   }}
                 />
@@ -205,11 +219,11 @@ export function SettleBox({
                 </div>
                 <div>
                   <Label>تعداد</Label>
-                  <Input inputMode="numeric" value={value.coinCount} onChange={(event) => patch({ coinCount: event.target.value })} />
+                  <NumberField kind="int" value={value.coinCount} onChange={(coinCount) => patch({ coinCount })} />
                 </div>
                 <div>
                   <Label>فی (ریال)</Label>
-                  <Input inputMode="numeric" value={value.coinPrice} onChange={(event) => patch({ coinPrice: event.target.value })} />
+                  <NumberField kind="money" value={value.coinPrice} onChange={(coinPrice) => patch({ coinPrice })} />
                 </div>
               </div>
             ) : null}
@@ -228,15 +242,15 @@ export function SettleBox({
                 </div>
                 <div>
                   <Label>وزن</Label>
-                  <Input inputMode="decimal" value={value.goldScale} onChange={(event) => patch({ goldScale: event.target.value })} />
+                  <NumberField kind="decimal" value={value.goldScale} onChange={(goldScale) => patch({ goldScale })} />
                 </div>
                 <div>
                   <Label>عیار</Label>
-                  <Input value={value.goldAyar} onChange={(event) => patch({ goldAyar: event.target.value })} />
+                  <NumberField kind="decimal" value={value.goldAyar} onChange={(goldAyar) => patch({ goldAyar })} />
                 </div>
                 <div>
                   <Label>مبلغ (خالی = مظنه)</Label>
-                  <Input inputMode="numeric" value={value.goldTotal} onChange={(event) => patch({ goldTotal: event.target.value })} />
+                  <NumberField kind="money" value={value.goldTotal} onChange={(goldTotal) => patch({ goldTotal })} />
                 </div>
               </div>
             ) : null}
@@ -254,11 +268,11 @@ export function SettleBox({
                 </div>
                 <div>
                   <Label>وزن خروجی</Label>
-                  <Input value={value.goldScale} onChange={(event) => patch({ goldScale: event.target.value })} />
+                  <NumberField kind="decimal" value={value.goldScale} onChange={(goldScale) => patch({ goldScale })} />
                 </div>
                 <div>
                   <Label>مبلغ (خالی = مظنه)</Label>
-                  <Input inputMode="numeric" value={value.goldTotal} onChange={(event) => patch({ goldTotal: event.target.value })} />
+                  <NumberField kind="money" value={value.goldTotal} onChange={(goldTotal) => patch({ goldTotal })} />
                 </div>
               </div>
             ) : null}

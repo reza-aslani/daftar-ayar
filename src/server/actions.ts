@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { AccountGroup, GoldKind, Role } from "@prisma/client";
 import { parseAmount, parseRial } from "@/lib/format";
+import { accountTitle } from "@/lib/labels";
 import { createAccount, createUser, updateAccount, updateSettings, updateUser } from "@/server/admin";
 import { login, logout, requireAdmin, requireUser } from "@/server/auth";
 import {
@@ -23,7 +24,7 @@ import {
 } from "@/server/posting";
 import type { CoinOp, MoneyLegDraft, PriceMode } from "@/lib/accounting";
 
-export type ActionOk = { ok: true; id: string; number?: number };
+export type ActionOk = { ok: true; id: string; number?: number; code?: number; title?: string; group?: string };
 export type ActionFail = { ok: false; error: string };
 
 function readMoney(legs?: { via: "cash" | "bank"; amount: string; bankAccountId?: string }[]): MoneyLegDraft[] | undefined {
@@ -360,7 +361,7 @@ export async function createAccountAction(input: {
     const user = await requireUser();
     const account = await createAccount(user.id, input);
     revalidatePath("/", "layout");
-    return { ok: true, id: account.id };
+    return { ok: true, id: account.id, code: account.code, title: accountTitle(account.name, account.family), group: account.group };
   } catch (error) {
     return fail(error);
   }

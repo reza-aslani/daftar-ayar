@@ -51,7 +51,7 @@ export default async function SandoghPage({ searchParams }: { searchParams: Prom
       </div>
       <SandoghDesk
         today={data.today}
-        people={data.accounts.map((account) => ({ id: account.id, title: account.title, code: account.code }))}
+        people={data.accounts.map((account) => ({ id: account.id, title: account.title, code: account.code, groupLabel: account.groupLabel }))}
         boxes={data.moneyAccounts.map((account) => ({ id: account.id, title: account.title, group: account.group }))}
         initialAccountId={params.account}
       />

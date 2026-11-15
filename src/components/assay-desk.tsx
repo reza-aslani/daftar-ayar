@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { computeAssay } from "@/lib/accounting";
+import { EntryForm, SaveButton, toastSaved } from "@/components/entry/form";
+import { useFormMemory } from "@/components/entry/memory";
+import { NumberField } from "@/components/entry/number-field";
 import type { PendingPiece } from "@/lib/dto";
 import { formatAyar, formatWeight, gramBalance, parseAmount } from "@/lib/format";
 import { formatJalaliFa } from "@/lib/date";
 import { assayAction } from "@/server/actions";
-import { Button } from "@/components/ui/button";
-import { Input, Label, Select, Textarea } from "@/components/ui/input";
+import { Label, Select, Textarea } from "@/components/ui/input";
 
 export function AssayDesk({
   pieces,
@@ -30,6 +31,19 @@ export function AssayDesk({
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [pulse, setPulse] = useState(0);
+  useFormMemory("assay", { ayar, labId }, (saved) => {
+    if (saved.ayar) setAyar(saved.ayar);
+    if (!piece?.labId && saved.labId && labs.some((lab) => lab.id === saved.labId)) setLabId(saved.labId);
+  });
+  useEffect(() => {
+    if (pieces.some((item) => item.id === itemId)) return;
+    const next = pieces[0];
+    if (!next) return;
+    setItemId(next.id);
+    setLabId(next.labId);
+    setEnvelopeNo(next.envelopeNo);
+  }, [pieces, itemId]);
 
   const preview = useMemo(() => {
     if (!piece) return null;
@@ -64,17 +78,26 @@ export function AssayDesk({
               setLabId(item.labId);
               setEnvelopeNo(item.envelopeNo);
             }}
-            className={`block w-full rounded-xl px-3 py-2 text-right text-sm ${item.id === piece.id ? "bg-[#16211e] text-white" : "hover:bg-[#faf6ee]"}`}
+            className={`block min-h-11 w-full rounded-xl px-3 py-2 text-right text-sm ${item.id === piece.id ? "bg-[#16211e] text-white" : "hover:bg-[#faf6ee]"}`}
           >
             <div>{item.codeLabel} · {item.kindLabel}</div>
             <div className="text-xs opacity-80">{formatWeight(item.scale)} گرم از {item.sourceName}</div>
           </button>
         ))}
       </div>
-      <form
+      <EntryForm
         className="panel space-y-4 p-5"
-        onSubmit={(event) => {
-          event.preventDefault();
+        pending={pending}
+        dirty={Boolean(note.trim() || ayar.trim() !== "735" || kasr.trim() !== "0")}
+        focusNonce={pulse}
+        onClear={() => {
+          setAyar("735");
+          setKasr("0");
+          setNote("");
+          setEnvelopeNo(piece.envelopeNo);
+          setPulse((n) => n + 1);
+        }}
+        onSubmit={() => {
           setError(null);
           start(async () => {
             const result = await assayAction({ date: today, itemId: piece.id, ayar, kasr, labId, envelopeNo, note });
@@ -82,8 +105,9 @@ export function AssayDesk({
               setError(result.error);
               return;
             }
-            toast.success("جواب ری ثبت شد");
-            router.push(`/documents/${result.id}`);
+            toastSaved(result.number, () => router.push(`/documents/${result.id}`));
+            setNote("");
+            setPulse((n) => n + 1);
             router.refresh();
           });
         }}
@@ -98,11 +122,11 @@ export function AssayDesk({
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <Label>عیار جواب</Label>
-            <Input value={ayar} onChange={(event) => setAyar(event.target.value)} />
+            <NumberField data-autofocus="" data-entry-next="" kind="decimal" value={ayar} onChange={setAyar} />
           </div>
           <div>
             <Label>کسر ذوب (گرم ترازو)</Label>
-            <Input value={kasr} onChange={(event) => setKasr(event.target.value)} />
+            <NumberField kind="decimal" value={kasr} onChange={setKasr} />
           </div>
           <div>
             <Label>ری‌گیری</Label>
@@ -115,7 +139,7 @@ export function AssayDesk({
           </div>
           <div>
             <Label>شماره پاکت</Label>
-            <Input value={envelopeNo} onChange={(event) => setEnvelopeNo(event.target.value)} />
+            <input className="field" value={envelopeNo} onChange={(event) => setEnvelopeNo(event.target.value)} />
           </div>
         </div>
         {typeof preview === "string" ? <p className="text-sm text-[#9d243c]">{preview}</p> : preview ? (
@@ -150,9 +174,9 @@ export function AssayDesk({
         ) : null}
         <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="یادداشت جواب" />
         {error ? <p className="text-sm text-[#9d243c]">{error}</p> : null}
-        <Button disabled={pending}>{pending ? "در حال ثبت…" : "ثبت جواب ری"}</Button>
+        <SaveButton disabled={pending}>{pending ? "در حال ثبت…" : "ثبت جواب ری"}</SaveButton>
         <p className="text-xs text-[#6d6458]">عیار در این پیش‌نمایش با {ayar ? formatAyar(parseSafe(ayar)) : "—"} نشان داده می‌شود. برای اصلاح جواب، مدیر باید همین سند را ابطال کند.</p>
-      </form>
+      </EntryForm>
     </div>
   );
 }
