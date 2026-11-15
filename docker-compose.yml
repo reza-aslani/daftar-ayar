@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ayar
       POSTGRES_DB: ayar
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ayar-pg:/var/lib/postgresql/data
 
