@@ -17,6 +17,8 @@ export default async function SettingsPage() {
         shopName={settings.shopName}
         defaultAyar={settings.defaultAyar.toString()}
         staleAbshodeDays={String(settings.staleAbshodeDays)}
+        invoicePaper={settings.invoicePaper}
+        invoiceFooter={settings.invoiceFooter}
       />
     </div>
   );

@@ -197,6 +197,13 @@ export const shortcutHelp: { group: string; rows: { keys: string; label: string 
       { keys: "F5  ·  Ctrl+Enter", label: "ثبت" },
       { keys: "Esc", label: "پاک کردن فرم، اگر چیزی نوشته شده باشد" },
       { keys: "Ctrl+Insert", label: "شخص جدید" },
+      { keys: "بعد از ثبت", label: "دکمهٔ «چاپ فاکتور» روی پیام ثبت. فوکوس فرم جابه‌جا نمی‌شود." },
+    ],
+  },
+  {
+    group: "فاکتور",
+    rows: [
+      { keys: "F6  ·  Ctrl+P", label: "چاپ فاکتور سند باز. وسط فرم ثبت کار نمی‌کند." },
     ],
   },
   {

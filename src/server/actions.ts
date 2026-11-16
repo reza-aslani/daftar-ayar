@@ -393,13 +393,21 @@ export async function updateAccountAction(
   }
 }
 
-export async function settingsAction(input: { shopName: string; defaultAyar: string; staleAbshodeDays: string }): Promise<ActionOk | ActionFail> {
+export async function settingsAction(input: {
+  shopName: string;
+  defaultAyar: string;
+  staleAbshodeDays: string;
+  invoicePaper: string;
+  invoiceFooter: string;
+}): Promise<ActionOk | ActionFail> {
   try {
     const user = await requireAdmin();
     await updateSettings(user.id, {
       shopName: input.shopName,
       defaultAyar: parseAmount(input.defaultAyar),
       staleAbshodeDays: Number(parseAmount(input.staleAbshodeDays).toFixed(0)),
+      invoicePaper: input.invoicePaper,
+      invoiceFooter: input.invoiceFooter,
     });
     revalidatePath("/", "layout");
     return { ok: true, id: "1" };

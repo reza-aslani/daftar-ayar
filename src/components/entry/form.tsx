@@ -7,9 +7,16 @@ import { cycleFields, focusField, moveFocus } from "@/lib/focus-order";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-export function toastSaved(number: number | undefined, onOpen: () => void) {
+export function toastSaved(number: number | undefined, actions: { onOpen: () => void; onPrint?: () => void }) {
+  const printed = Boolean(actions.onPrint);
   toast.success(number ? `سند ${toFaDigits(number)} ثبت شد` : "ثبت شد", {
-    action: { label: "مشاهده", onClick: onOpen },
+    duration: 8000,
+    action: printed
+      ? { label: "چاپ فاکتور", onClick: () => actions.onPrint?.() }
+      : { label: "مشاهده", onClick: actions.onOpen },
+    cancel: printed ? { label: "مشاهده", onClick: actions.onOpen } : undefined,
+    actionButtonStyle: { minHeight: 44 },
+    cancelButtonStyle: { minHeight: 44 },
   });
 }
 

@@ -181,9 +181,133 @@ button, input, select, textarea {
   .dock { display: none; }
 }
 
+.invoice-frame {
+  --paper-width: 148mm;
+}
+
+.invoice-frame[data-paper="receipt"] { --paper-width: 80mm; }
+.invoice-frame[data-paper="a4"] { --paper-width: 210mm; }
+
+.invoice-sheet {
+  width: min(100%, var(--paper-width));
+  margin-inline: auto;
+  background: #fff;
+  color: #1b2838;
+  border: 1px solid #e4d3b4;
+  border-top: 6px solid #0e3f86;
+  box-shadow: 0 10px 28px rgba(14, 63, 134, 0.08);
+  padding: 18px 16px 20px;
+}
+
+.invoice-frame[data-paper="receipt"] .invoice-sheet {
+  font-size: 13px;
+  padding: 10px 8px 14px;
+}
+
+.invoice-rule {
+  height: 3px;
+  margin: 8px 0 12px;
+  background: linear-gradient(90deg, #0e3f86, #c6a15b);
+}
+
+.factor {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.factor th,
+.factor td {
+  border-bottom: 1px solid #eadcc4;
+  padding: 0.35rem 0.25rem;
+  text-align: right;
+  vertical-align: top;
+}
+
+.factor th {
+  color: #6d6458;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.invoice-balances {
+  display: grid;
+  gap: 0.6rem;
+  border-top: 1px solid #e6d7bf;
+  padding-top: 0.7rem;
+}
+
+.invoice-frame:not([data-paper="receipt"]) .invoice-balances {
+  grid-template-columns: 1fr 1fr;
+}
+
+.invoice-frame[data-paper="receipt"] .factor thead {
+  display: none;
+}
+
+.invoice-frame[data-paper="receipt"] .factor,
+.invoice-frame[data-paper="receipt"] .factor tbody,
+.invoice-frame[data-paper="receipt"] .factor tr,
+.invoice-frame[data-paper="receipt"] .factor td {
+  display: block;
+  width: auto;
+  border: none;
+  padding: 0;
+}
+
+.invoice-frame[data-paper="receipt"] .factor tr {
+  border-bottom: 1px dashed #e4d3b4;
+  padding: 0.45rem 0;
+}
+
+.invoice-frame[data-paper="receipt"] .factor td.is-blank,
+.invoice-frame[data-paper="receipt"] .factor td.col-wage {
+  display: none;
+}
+
+.invoice-frame[data-paper="receipt"] .factor td[data-label]::before {
+  content: attr(data-label) " ";
+  color: #6d6458;
+}
+
 @media print {
   .no-print, .dock, aside { display: none !important; }
   body { background: #fff; }
-  .desk { padding: 0 !important; }
+  .desk { padding: 0 !important; display: block !important; }
+  main { max-width: none !important; padding: 0 !important; }
   .panel, .z-window { box-shadow: none; }
+  .invoice-sheet {
+    width: auto;
+    max-width: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+  .invoice-frame[data-paper="receipt"] .invoice-sheet {
+    width: 72mm;
+    max-width: 72mm;
+  }
+  .invoice-rule { background: #111; height: 1px; }
+  .factor tr, .invoice-balances > div { break-inside: avoid; }
+}
+
+@page invoice-receipt {
+  size: 80mm 297mm;
+  margin: 4mm;
+}
+
+@page invoice-a5 {
+  size: A5 portrait;
+  margin: 10mm;
+}
+
+@page invoice-a4 {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  body[data-paper="receipt"] { page: invoice-receipt; }
+  body[data-paper="a5"] { page: invoice-a5; }
+  body[data-paper="a4"] { page: invoice-a4; }
 }

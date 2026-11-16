@@ -29,6 +29,18 @@ export function formatJalaliFa(date: Date): string {
   return toFaDigits(formatJalali(date));
 }
 
+export function formatTehranClock(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tehran",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  return toFaDigits(`${hour}:${minute}`);
+}
+
 export function formatJalaliLong(date: Date): string {
   const j = toJalaali(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
   const weekday = WEEKDAYS[date.getUTCDay()];
