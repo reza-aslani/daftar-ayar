@@ -28,4 +28,14 @@ describe("جستجوی شخص", () => {
   it("عبارت خالی همه را به ترتیب کد برمی‌گرداند", () => {
     expect(filterPeople(people, "  ").map((p) => p.code)).toEqual([104, 105, 106, 108]);
   });
+
+  it("تلفن را با رقم فارسی و عربی پیدا می‌کند و از کد دقیق عقب‌تر نمی‌اندازد", () => {
+    const withPhone = [
+      { id: "a", code: 104, title: "حسین محمدی", mobile: "09121234567" },
+      { id: "b", code: 105, title: "فاطمه اکبری", phone: "۰۲۱۵۵۶۶۷۷۸۸" },
+    ];
+    expect(filterPeople(withPhone, "۰۹۱۲۱۲۳").map((person) => person.id)).toEqual(["a"]);
+    expect(filterPeople(withPhone, "٥٥٦٦").map((person) => person.id)).toEqual(["b"]);
+    expect(filterPeople(withPhone, "۱۰۴").map((person) => person.id)).toEqual(["a"]);
+  });
 });

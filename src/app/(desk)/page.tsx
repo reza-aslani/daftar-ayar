@@ -14,6 +14,7 @@ const menu = [
   { n: "۷", href: "/inventory/coins", title: "موجودی سکه", hint: "تعداد صندوق و ملکی" },
   { n: "۸", href: "/journal", title: "روزنامه", hint: "اسناد ثبت‌شده" },
   { n: "۹", href: "/mazane", title: "مظنه", hint: "مثقال ۷۰۵ و گرم ۷۵۰" },
+  { n: "۱۱", href: "/reports", title: "گزارشات", hint: "F11 · تراز، روزنامه و موجودی" },
 ];
 
 export default async function HomePage() {
@@ -42,6 +43,7 @@ export default async function HomePage() {
           </Link>
         ))}
       </div>
+      <p className="text-sm text-[#4d6278]">F3 یا Ctrl+K جستجو · F1 میانبرها</p>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {menu.map((item) => (
           <Link key={item.href} href={item.href} className="z-tile">

@@ -1,6 +1,6 @@
 import { toEnDigits } from "@/lib/format";
 
-export type PersonLike = { id: string; code: number; title: string };
+export type PersonLike = { id: string; code: number; title: string; phone?: string; mobile?: string };
 
 /** ی/ک عربی و فاصلهٔ مجازی را یکی می‌کند تا جستجوی ناقص اسم گیر نکند. */
 export function foldFa(input: string): string {
@@ -24,8 +24,12 @@ export function filterPeople<T extends PersonLike>(people: T[], query: string): 
     let score = 0;
     if (digits && code === digits && q === digits) score = 100;
     else if (digits && code.startsWith(digits) && q === digits) score = 80;
-    else if (title.startsWith(q)) score = 60;
-    else if (title.includes(q)) score = 40;
+    if (title.startsWith(q)) score = Math.max(score, 60);
+    else if (title.includes(q)) score = Math.max(score, 40);
+    if (digits.length >= 4) {
+      const phones = foldFa(`${person.mobile ?? ""}${person.phone ?? ""}`).replace(/\D/g, "");
+      if (phones.includes(digits)) score = Math.max(score, phones.startsWith(digits) ? 70 : 55);
+    }
     if (!score) continue;
     scored.push({ person, score });
   }

@@ -33,7 +33,13 @@ type PartyProps = {
   people: AccountOption[];
   insertedId: string | null;
   onNewPerson: () => void;
+  initialAccountId?: string;
 };
+
+function partyAccount(people: AccountOption[], initialAccountId?: string) {
+  if (!initialAccountId) return "";
+  return people.some((person) => person.id === initialAccountId) ? initialAccountId : "";
+}
 
 function usePost(onDone?: () => void) {
   const router = useRouter();
@@ -78,7 +84,7 @@ function ErrorText({ error }: { error: string | null }) {
   return <p className="rounded-xl bg-[#fff1f2] px-3 py-2 text-sm text-[#9d243c]">{error}</p>;
 }
 
-export function SanadDesk({ data, tab }: { data: DeskData; tab: string }) {
+export function SanadDesk({ data, tab, initialAccountId }: { data: DeskData; tab: string; initialAccountId?: string }) {
   const initial = tabs.some((item) => item.id === tab) ? tab : "in";
   const [current, setCurrent] = useState(initial);
   const [extra, setExtra] = useState<AccountOption[]>([]);
@@ -89,7 +95,7 @@ export function SanadDesk({ data, tab }: { data: DeskData; tab: string }) {
     for (const person of extra) if (!map.has(person.id)) map.set(person.id, person);
     return [...map.values()].sort((a, b) => a.code - b.code);
   }, [data.accounts, extra]);
-  const party: PartyProps = { people, insertedId, onNewPerson: () => setOpenNew(true) };
+  const party: PartyProps = { people, insertedId, initialAccountId, onNewPerson: () => setOpenNew(true) };
   return (
     <div className="space-y-4">
       <div>
@@ -131,7 +137,7 @@ export function SanadDesk({ data, tab }: { data: DeskData; tab: string }) {
   );
 }
 
-function GoldIn({ data, people, insertedId, onNewPerson }: { data: DeskData } & PartyProps) {
+function GoldIn({ data, people, insertedId, onNewPerson, initialAccountId }: { data: DeskData } & PartyProps) {
   const focus = usePulse();
   const post = usePost(() => {
     setScale("");
@@ -143,7 +149,7 @@ function GoldIn({ data, people, insertedId, onNewPerson }: { data: DeskData } & 
   });
   const [kind, setKind] = useState<"MOTAFARREQE" | "ABSHODE">("MOTAFARREQE");
   const [conditional, setConditional] = useState(false);
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState(() => partyAccount(people, initialAccountId));
   const [scale, setScale] = useState("");
   const [ayar, setAyar] = useState(trimDecimal(data.defaultAyar));
   const [labId, setLabId] = useState("");
@@ -191,7 +197,7 @@ function GoldIn({ data, people, insertedId, onNewPerson }: { data: DeskData } & 
       }}
     >
       <div className="grid gap-3 md:grid-cols-2">
-        <PersonPicker people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
+        <PersonPicker people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus={!accountId} />
         <div>
           <Label>نوع</Label>
           <Select
@@ -208,7 +214,7 @@ function GoldIn({ data, people, insertedId, onNewPerson }: { data: DeskData } & 
         </div>
         <div>
           <Label>وزن ترازو (گرم)</Label>
-          <NumberField data-entry-next="" kind="decimal" value={scale} onChange={setScale} placeholder="۷۰/۵۳" />
+          <NumberField data-entry-next="" data-autofocus={accountId ? "" : undefined} kind="decimal" value={scale} onChange={setScale} placeholder="۷۰/۵۳" />
         </div>
         <div>
           <Label>عیار</Label>
@@ -249,9 +255,9 @@ function GoldIn({ data, people, insertedId, onNewPerson }: { data: DeskData } & 
   );
 }
 
-function GoldOut({ data, people, insertedId, onNewPerson }: { data: DeskData } & PartyProps) {
+function GoldOut({ data, people, insertedId, onNewPerson, initialAccountId }: { data: DeskData } & PartyProps) {
   const focus = usePulse();
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState(() => partyAccount(people, initialAccountId));
   const [itemId, setItemId] = useState(data.pieces[0]?.id ?? "");
   const piece = data.pieces.find((item) => item.id === itemId);
   const [scale, setScale] = useState(piece?.scale ?? "");
@@ -279,14 +285,14 @@ function GoldOut({ data, people, insertedId, onNewPerson }: { data: DeskData } &
       }}
     >
       <p className="text-sm text-[#6d6458]">عیار را دوباره نمی‌پرسد؛ همان عیار ورود است. اگر وزن کمتر از مانده باشد، بقیه در صندوق می‌ماند (قیچی).</p>
-      <PersonPicker label="حساب گیرنده" people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
+      <PersonPicker label="حساب گیرنده" people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus={!accountId} />
       <PiecePick data={data} itemId={itemId} onChange={(id) => {
         setItemId(id);
         setScale(data.pieces.find((item) => item.id === id)?.scale ?? "");
       }} />
       <div>
         <Label>وزن خروجی</Label>
-        <NumberField data-entry-next="" kind="decimal" value={scale} onChange={setScale} />
+        <NumberField data-entry-next="" data-autofocus={accountId ? "" : undefined} kind="decimal" value={scale} onChange={setScale} />
       </div>
       <ErrorText error={post.error} />
       <SaveButton disabled={post.pending} variant="danger">{post.pending ? "در حال ثبت…" : "ثبت خروج"}</SaveButton>
@@ -313,9 +319,9 @@ function PiecePick({ data, itemId, onChange }: { data: DeskData; itemId: string;
   );
 }
 
-function GoldTrade({ data, side, people, insertedId, onNewPerson }: { data: DeskData; side: "BUY" | "SELL" } & PartyProps) {
+function GoldTrade({ data, side, people, insertedId, onNewPerson, initialAccountId }: { data: DeskData; side: "BUY" | "SELL" } & PartyProps) {
   const focus = usePulse();
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState(() => partyAccount(people, initialAccountId));
   const [kind, setKind] = useState<"MOTAFARREQE" | "ABSHODE">("MOTAFARREQE");
   const [scale, setScale] = useState("");
   const [ayar, setAyar] = useState(trimDecimal(data.defaultAyar));
@@ -428,7 +434,7 @@ function GoldTrade({ data, side, people, insertedId, onNewPerson }: { data: Desk
           : "فروش از موجودی کم می‌کند و مبلغ را بدهکار شخص یا وصول نقد می‌کند. قیمت روی وزن ۷۵۰ همان قطعه است."}
       </p>
       <div className="grid gap-3 md:grid-cols-2">
-        <PersonPicker people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
+        <PersonPicker people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus={!accountId} />
         <div>
           <Label>تاریخ</Label>
           <Input value={date} onChange={(event) => setDate(event.target.value)} />
@@ -445,7 +451,7 @@ function GoldTrade({ data, side, people, insertedId, onNewPerson }: { data: Desk
           </div>
           <div>
             <Label>وزن ترازو</Label>
-            <NumberField data-entry-next="" kind="decimal" value={scale} onChange={setScale} placeholder="۷۰/۵۳" />
+            <NumberField data-entry-next="" data-autofocus={accountId ? "" : undefined} kind="decimal" value={scale} onChange={setScale} placeholder="۷۰/۵۳" />
           </div>
           <div>
             <Label>عیار</Label>
@@ -464,7 +470,7 @@ function GoldTrade({ data, side, people, insertedId, onNewPerson }: { data: Desk
           />
           <div>
             <Label>وزن فروشی از همین قطعه</Label>
-            <NumberField data-entry-next="" kind="decimal" value={sellScale} onChange={setSellScale} />
+            <NumberField data-entry-next="" data-autofocus={accountId ? "" : undefined} kind="decimal" value={sellScale} onChange={setSellScale} />
           </div>
         </>
       )}
@@ -629,10 +635,10 @@ function Melt({ data }: { data: DeskData }) {
   );
 }
 
-function CoinForm({ data, people, insertedId, onNewPerson }: { data: DeskData } & PartyProps) {
+function CoinForm({ data, people, insertedId, onNewPerson, initialAccountId }: { data: DeskData } & PartyProps) {
   const focus = usePulse();
   const [op, setOp] = useState<"BUY" | "SELL" | "RECEIVE" | "PAY">("BUY");
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState(() => partyAccount(people, initialAccountId));
   const [coinTypeId, setCoinTypeId] = useState(data.coins[0]?.id ?? "");
   const coin = data.coins.find((item) => item.id === coinTypeId);
   const [count, setCount] = useState("1");
@@ -732,7 +738,7 @@ function CoinForm({ data, people, insertedId, onNewPerson }: { data: DeskData } 
         ))}
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        <PersonPicker people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
+        <PersonPicker people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus={!accountId} />
         <div>
           <Label>سکه</Label>
           <Select
@@ -752,7 +758,7 @@ function CoinForm({ data, people, insertedId, onNewPerson }: { data: DeskData } 
         </div>
         <div>
           <Label>تعداد</Label>
-          <NumberField data-entry-next="" kind="int" value={count} onChange={setCount} />
+          <NumberField data-entry-next="" data-autofocus={accountId ? "" : undefined} kind="int" value={count} onChange={setCount} />
         </div>
         <div>
           <Label>{op === "RECEIVE" || op === "PAY" ? "اجرت هر عدد (ریال)" : "فی هر عدد (ریال)"}</Label>
@@ -779,10 +785,10 @@ function CoinForm({ data, people, insertedId, onNewPerson }: { data: DeskData } 
   );
 }
 
-function CashForm({ data, people, insertedId, onNewPerson }: { data: DeskData } & PartyProps) {
+function CashForm({ data, people, insertedId, onNewPerson, initialAccountId }: { data: DeskData } & PartyProps) {
   const focus = usePulse();
   const [direction, setDirection] = useState<"IN" | "OUT">("IN");
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState(() => partyAccount(people, initialAccountId));
   const [amount, setAmount] = useState("");
   const [via, setVia] = useState<"cash" | "bank">("cash");
   const [bankId, setBankId] = useState(data.banks[0]?.id ?? "");
@@ -821,10 +827,10 @@ function CashForm({ data, people, insertedId, onNewPerson }: { data: DeskData } 
         <button type="button" className={`min-h-11 px-3 py-2 text-sm md:min-h-0 ${direction === "IN" ? "bg-[#1a56a8] text-white" : "border border-[#8eadd4] bg-white"}`} onClick={() => setDirection("IN")}>دریافت</button>
         <button type="button" className={`min-h-11 px-3 py-2 text-sm md:min-h-0 ${direction === "OUT" ? "bg-[#a32020] text-white" : "border border-[#8eadd4] bg-white"}`} onClick={() => setDirection("OUT")}>پرداخت</button>
       </div>
-      <PersonPicker label="حساب شخص" people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
+      <PersonPicker label="حساب شخص" people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus={!accountId} />
       <div>
         <Label>مبلغ (ریال)</Label>
-        <NumberField data-entry-next="" kind="money" value={amount} onChange={setAmount} placeholder="۲۰٬۰۰۰٬۰۰۰" />
+        <NumberField data-entry-next="" data-autofocus={accountId ? "" : undefined} kind="money" value={amount} onChange={setAmount} placeholder="۲۰٬۰۰۰٬۰۰۰" />
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div>
@@ -852,9 +858,9 @@ function CashForm({ data, people, insertedId, onNewPerson }: { data: DeskData } 
   );
 }
 
-function SendForm({ data, people, insertedId, onNewPerson }: { data: DeskData } & PartyProps) {
+function SendForm({ data, people, insertedId, onNewPerson, initialAccountId }: { data: DeskData } & PartyProps) {
   const focus = usePulse();
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState(() => partyAccount(people, initialAccountId));
   const [min, setMin] = useState("");
   const [max, setMax] = useState("30");
   const [picked, setPicked] = useState<string[]>([]);
@@ -895,11 +901,11 @@ function SendForm({ data, people, insertedId, onNewPerson }: { data: DeskData } 
       }}
     >
       <p className="text-sm text-[#6d6458]">تکه‌های ریز موجود را یکجا به حسابی مثل ذوب می‌فرستد. وزن کامل مانده خارج می‌شود.</p>
-      <PersonPicker label="حساب مقصد" people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus />
+      <PersonPicker label="حساب مقصد" people={people} value={accountId} onChange={setAccountId} onNewPerson={onNewPerson} autoFocus={!accountId} />
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label>از وزن</Label>
-          <NumberField data-entry-next="" kind="decimal" value={min} onChange={setMin} />
+          <NumberField data-entry-next="" data-autofocus={accountId ? "" : undefined} kind="decimal" value={min} onChange={setMin} />
         </div>
         <div>
           <Label>تا وزن</Label>
