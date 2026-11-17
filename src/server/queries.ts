@@ -1,10 +1,11 @@
 import type { AccountGroup } from "@prisma/client";
 import Decimal from "decimal.js";
+import { headers } from "next/headers";
 import { isStaleAbshode, pieceAgeDays } from "@/lib/accounting";
-import { tehranTodayUtc } from "@/lib/date";
+import { formatJalali, formatJalaliFa, formatTehranClock, tehranTodayUtc } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import type { AccountOption, DeskData, PendingPiece, StockPiece } from "@/lib/dto";
-import { formatJalali } from "@/lib/date";
+import { buildInvoice, parseInvoicePaper, type InvoiceSourceRow } from "@/lib/invoice";
 import { accountTitle, GROUP_LABEL, KIND_LABEL, pieceCode } from "@/lib/labels";
 
 const moneyGroups: AccountGroup[] = ["CASH", "BANK"];
@@ -207,6 +208,93 @@ export async function getDocument(id: string) {
       voidedBy: true,
       rows: { include: { account: true, coinType: true, goldItem: true }, orderBy: { lineNo: "asc" } },
     },
+  });
+}
+
+async function requestOrigin() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  if (!host) return "";
+  const forwarded = h.get("x-forwarded-proto");
+  const proto = forwarded ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+export async function getInvoice(id: string) {
+  const doc = await prisma.document.findUnique({
+    where: { id },
+    include: {
+      account: true,
+      createdBy: true,
+      voidedBy: true,
+      rows: { include: { account: true, coinType: true, goldItem: true }, orderBy: { lineNo: "asc" } },
+    },
+  });
+  if (!doc) return null;
+  const [settings, before] = await Promise.all([
+    getSettings(),
+    prisma.documentRow.aggregate({
+      where: {
+        accountId: doc.accountId,
+        document: {
+          voidedAt: null,
+          OR: [{ date: { lt: doc.date } }, { date: doc.date, number: { lt: doc.number } }],
+        },
+      },
+      _sum: { gramDelta: true, rialDelta: true },
+    }),
+  ]);
+  const rows: InvoiceSourceRow[] = doc.rows.map((row) => ({
+    id: row.id,
+    lineNo: row.lineNo,
+    accountId: row.accountId,
+    accountTitle: accountTitle(row.account.name, row.account.family),
+    direction: row.direction,
+    rowKind: row.rowKind,
+    description: row.description,
+    goldKind: row.goldKind,
+    pieceLabel: row.goldItem ? pieceCode(row.goldItem.code) : null,
+    ang: row.goldItem?.ang ?? "",
+    scaleWeight: row.scaleWeight?.toString() ?? null,
+    ayar: row.ayar?.toString() ?? null,
+    weight750: row.weight750?.toString() ?? null,
+    amountRial: row.amountRial?.toString() ?? null,
+    count: row.count,
+    unitPrice: row.unitPrice?.toString() ?? null,
+    coinName: row.coinType?.name ?? null,
+    coinOp: row.coinOp,
+    gramDelta: row.gramDelta.toString(),
+    rialDelta: row.rialDelta.toString(),
+  }));
+  const origin = await requestOrigin();
+  return buildInvoice({
+    id: doc.id,
+    number: doc.number,
+    kind: doc.kind,
+    description: doc.description,
+    dateLabel: formatJalaliFa(doc.date),
+    timeLabel: formatTehranClock(doc.createdAt),
+    voided: Boolean(doc.voidedAt),
+    voidLabel: doc.voidedAt
+      ? `ابطال شده در ${formatJalaliFa(doc.voidedAt)} توسط ${doc.voidedBy?.name ?? "مدیر"}. دلیل: ${doc.voidReason}`
+      : null,
+    createdByName: doc.createdBy.name,
+    shopName: settings.shopName,
+    footer: settings.invoiceFooter,
+    paper: parseInvoicePaper(settings.invoicePaper),
+    accountId: doc.accountId,
+    accountTitle: accountTitle(doc.account.name, doc.account.family),
+    accountCode: doc.account.code,
+    groupLabel: GROUP_LABEL[doc.account.group],
+    phone: doc.account.mobile || doc.account.phone,
+    asset: doc.account.group === "CASH" || doc.account.group === "BANK",
+    rows,
+    beforeRial: (before._sum.rialDelta ?? 0n).toString(),
+    beforeGram: before._sum.gramDelta?.toString() ?? "0",
+    mesghalGrams: settings.mesghalGrams.toString(),
+    mesghalAyar: settings.mesghalAyar.toString(),
+    standardAyar: settings.standardAyar.toString(),
+    url: `${origin}/documents/${doc.id}`,
   });
 }
 

@@ -39,7 +39,7 @@ export function ShortcutHelp({ open, onClose }: { open: boolean; onClose: () => 
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <p className="px-3 py-3 text-sm leading-6 text-[#4d6278]">
-            کلیدهای F حتی وسط تایپ کار می‌کنند. Ctrl+K هم همین‌طور. بقیهٔ میانبرها، از جمله ? و Alt+U، هنگام تایپ در فیلد خاموش‌اند تا ثبت سند به‌هم نریزد.
+            کلیدهای F دفتر، حتی وسط تایپ، کار می‌کنند. Ctrl+K هم همین‌طور. F6 و Ctrl+P فقط چاپ فاکتور روی صفحهٔ سند هستند و وسط فرم ثبت خاموش‌اند. بقیهٔ میانبرها، از جمله ? و Alt+U، هنگام تایپ در فیلد خاموش‌اند تا ثبت سند به‌هم نریزد.
           </p>
           {shortcutHelp.map((group) => (
             <section key={group.group}>

@@ -86,7 +86,7 @@ export function Shell({
           </form>
         </div>
       </aside>
-      <header className="sticky top-0 z-30 border-b border-[#0a2f66] bg-[#0e3f86] text-white md:hidden">
+      <header className="no-print sticky top-0 z-30 border-b border-[#0a2f66] bg-[#0e3f86] text-white md:hidden">
         <div className="flex items-center justify-between px-3 py-2">
           <div>
             <div className="text-[11px] text-[#ffe08a]">دفتر عیار</div>

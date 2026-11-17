@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DESK_COMMANDS, filterCommands, isTypingTarget, resolveShortcut } from "@/lib/commands";
+import { DESK_COMMANDS, filterCommands, isTypingTarget, resolveShortcut, shortcutHelp } from "@/lib/commands";
 import { digitQuery, documentNumberRanges } from "@/lib/search-query";
 import { readRecent, rememberPerson } from "@/lib/recent-people";
 
@@ -25,6 +25,10 @@ describe("میانبرهای سراسری", () => {
 
   it("کلیدهای فرم ثبت را نمی‌دزدد", () => {
     expect(resolveShortcut({ key: "F5" }, idle)).toBeNull();
+    expect(resolveShortcut({ key: "F6" }, idle)).toBeNull();
+    expect(resolveShortcut({ key: "p", ctrlKey: true }, idle)).toBeNull();
+    expect(resolveShortcut({ key: "F6" }, { typing: true, layer: null })).toBeNull();
+    expect(resolveShortcut({ key: "p", ctrlKey: true }, { typing: true, layer: null })).toBeNull();
     expect(resolveShortcut({ key: "Enter", ctrlKey: true }, idle)).toBeNull();
     expect(resolveShortcut({ key: "Insert", ctrlKey: true }, idle)).toBeNull();
     expect(resolveShortcut({ key: "Enter" }, idle)).toBeNull();
@@ -60,6 +64,10 @@ describe("میانبرهای سراسری", () => {
 
   it("تکرار کلید کارکرد صفحه را چند بار عوض نمی‌کند", () => {
     expect(resolveShortcut({ key: "F9", repeat: true }, idle)).toBeNull();
+  });
+
+  it("چاپ فاکتور در راهنما هست و میانبر سراسری نیست", () => {
+    expect(shortcutHelp.flatMap((group) => group.rows).some((row) => row.keys.includes("F6"))).toBe(true);
   });
 });
 

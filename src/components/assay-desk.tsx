@@ -105,7 +105,10 @@ export function AssayDesk({
               setError(result.error);
               return;
             }
-            toastSaved(result.number, () => router.push(`/documents/${result.id}`));
+            toastSaved(result.number, {
+              onOpen: () => router.push(`/documents/${result.id}`),
+              onPrint: () => router.push(`/documents/${result.id}/print?print=${Date.now()}`),
+            });
             setNote("");
             setPulse((n) => n + 1);
             router.refresh();

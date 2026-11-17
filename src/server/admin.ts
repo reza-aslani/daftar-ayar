@@ -101,7 +101,7 @@ export async function updateAccount(
 
 export async function updateSettings(
   userId: string,
-  input: { shopName: string; defaultAyar: number; staleAbshodeDays: number },
+  input: { shopName: string; defaultAyar: number; staleAbshodeDays: number; invoicePaper: string; invoiceFooter: string },
 ) {
   const shopName = input.shopName.trim();
   if (!shopName) throw new Error("نام فروشگاه را وارد کنید");
@@ -109,12 +109,19 @@ export async function updateSettings(
   if (!Number.isInteger(input.staleAbshodeDays) || input.staleAbshodeDays < 1 || input.staleAbshodeDays > 365) {
     throw new Error("مهلت راکد بودن آبشده باید بین ۱ تا ۳۶۵ روز باشد");
   }
+  if (input.invoicePaper !== "receipt" && input.invoicePaper !== "a5" && input.invoicePaper !== "a4") {
+    throw new Error("اندازهٔ کاغذ فاکتور نامعتبر است");
+  }
+  const invoiceFooter = input.invoiceFooter.replace(/\r\n/g, "\n").trim();
+  if (invoiceFooter.length > 500) throw new Error("متن پایین فاکتور طولانی است");
   await prisma.shopSettings.update({
     where: { id: 1 },
     data: {
       shopName,
       defaultAyar: new Prisma.Decimal(new Decimal(input.defaultAyar).toFixed(2)),
       staleAbshodeDays: input.staleAbshodeDays,
+      invoicePaper: input.invoicePaper,
+      invoiceFooter,
     },
   });
   await prisma.auditLog.create({
@@ -123,7 +130,7 @@ export async function updateSettings(
       action: "UPDATE_SETTINGS",
       entity: "ShopSettings",
       entityId: "1",
-      detail: `${shopName} / عیار ${input.defaultAyar} / راکد ${input.staleAbshodeDays}`,
+      detail: `${shopName} / عیار ${input.defaultAyar} / راکد ${input.staleAbshodeDays} / فاکتور ${input.invoicePaper}`,
     },
   });
 }

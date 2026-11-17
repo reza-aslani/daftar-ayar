@@ -127,6 +127,8 @@ model ShopSettings {
   mesghalGrams     Decimal  @default(4.6083) @db.Decimal(8, 4)
   mesghalAyar      Decimal  @default(705) @db.Decimal(7, 2)
   staleAbshodeDays Int      @default(7)
+  invoicePaper     String   @default("a5")
+  invoiceFooter    String   @default("")
   updatedAt        DateTime @updatedAt
 }
 
